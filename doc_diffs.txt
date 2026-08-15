@@ -3,9 +3,9 @@ index c8acf19..9e79f8e 100644
 --- a/documentation/00-specification-index.md
 +++ b/documentation/00-specification-index.md
 @@ -2,14 +2,18 @@
- 
+
  ## Status
- 
+
 -The detailing phase and implementation milestones M0-M4 are complete. The
 +The detailing phase and implementation milestones M0-M4 have validated backend
 +and workflow evidence. A user-directed node-first workbench amendment dated
@@ -22,33 +22,33 @@ index c8acf19..9e79f8e 100644
 +explicit workflow execution. Product feature milestones M5-M10 remain to be
 +implemented. Failed M1 capability spikes remain intentionally hidden or
  bounded rather than treated as completed product work.
- 
+
  The human-authored `seed-spec.md` is immutable and remains the source of product
 @@ -29,6 +33,7 @@ intent. Derived documents resolve ambiguities without changing that reference.
  | 7 | `07-quality-evaluation.md` | Fixtures, oracles, E2E, performance, security, release gates | Closed |
  | 8 | `08-implementation-plan.md` | Dependency-ordered vertical milestones and objective exit evidence | Ready to execute |
  | 9 | `09-traceability-decisions-risks.md` | Seed coverage, decisions, risks, open questions, audit | Current |
 +| 10 | `10-node-first-workbench-update.md` | User-directed ComfyUI-informed node-local controls, previews, run/queue amendment | Active; R1 required before M5 resumes |
- 
+
  The repository-root `agent-graph-loop.md` governs execution: outcomes and
  definitions of done control nested loops; failed evaluations reopen the smallest
 @@ -50,7 +55,9 @@ honor these M1 results:
  - Exact HSL picker visual parity remains blocked until the approved design source
    is supplied or behavior-only visuals are explicitly accepted before M8.2.
- 
+
 -These constraints do not block M5 resize and correction work.
 +These constraints do not block R1 node-first workbench alignment. M5 UI closure
 +is blocked until R1 passes; completed scalar and worker transform evidence is
 +retained.
- 
+
  ## Change Rules
- 
+
 diff --git a/documentation/03-product-requirements.md b/documentation/03-product-requirements.md
 index 546e481..2be88a7 100644
 --- a/documentation/03-product-requirements.md
 +++ b/documentation/03-product-requirements.md
 @@ -61,6 +61,10 @@ and P2 is deferred enhancement.
- 
+
  - **Visible dataflow:** output changes are explained by explicit nodes and edges;
    no hidden graph-wide image source affects evaluation.
 +- **Node-first operation:** ordinary controls and results live in their owning
@@ -66,7 +66,7 @@ index 546e481..2be88a7 100644
 +| Run | Immutable execution request capturing project revision, demanded output nodes, and settings. |
 +| Queue | Ordered pending/running/recent run records; queue state is ephemeral, not authored workflow state. |
 +| Cached | Node output was reused because its complete execution identity matched. |
- 
+
  Bypass, mute, lock, selection, focus, error, computing, and stale are independent
  state axes. Shortcuts never fire while a text field, numeric field, or editable
 @@ -101,9 +109,12 @@ color value consumes the keystroke.
@@ -82,7 +82,7 @@ index 546e481..2be88a7 100644
 +  running, cached, succeeded, or error state and output nodes show results in-node.
 +7. The project autosaves authored state independently of run completion and
 +  reports durability state.
- 
+
  **Acceptance:** closing and reopening restores nodes, edges, values, dimensions,
  positions, z-order, viewport, theme, and assets; equivalent output recomputes.
 @@ -162,7 +173,8 @@ complete snapshot or the next complete snapshot, never a mixed project.
@@ -149,9 +149,9 @@ index 546e481..2be88a7 100644
 +- **EXE-008 P0:** Autosave and draft preview never create a completed run record or
 +  relabel stale results as current. Run completion never relabels unsaved authored
 +  edits as saved.
- 
+
  ### 7.5 Load Image node
- 
+
 diff --git a/documentation/05-architecture-runtime-persistence.md b/documentation/05-architecture-runtime-persistence.md
 index b43f5b0..d900773 100644
 --- a/documentation/05-architecture-runtime-persistence.md
@@ -173,7 +173,7 @@ index b43f5b0..d900773 100644
      DB --> IDB[(IndexedDB)]
      CMD --> CH[Multi-tab lease channel]
 @@ -52,12 +54,19 @@ flowchart LR
- 
+
  - `ui`: rendering, focus, dialogs, inspector, commands, announcements. No pixel
    loops, codec parsing, or IndexedDB calls.
 +- `node-widget-schema`: one versioned definition for node-local and inspector
@@ -194,20 +194,20 @@ index b43f5b0..d900773 100644
    tile/halo rules, and conformance fixtures.
  - `compute-cpu`: scalar oracle and WASM implementations.
 @@ -84,7 +93,9 @@ settings, and explicitly named project preferences.
- 
+
  Selection, focus, hover, open menus, current drag, worker handles, progress,
  preview bitmaps, cache entries, object URLs, error stacks, and device adapters are
 -not workflow state. Viewport is persisted but not part of undo history.
 +not workflow state. Run queue/history records, node running/progress state, draft
 +preview handles, and current/previous result handles are also ephemeral. Viewport
 +is persisted but not part of undo history.
- 
+
  ### Command model
- 
+
 @@ -107,28 +118,48 @@ compatible, target cardinality allows it, and adding it does not create a cycle.
  Cycle detection occurs on the proposed in-memory graph before commit. Import
  validates the entire graph independently of UI checks.
- 
+
 -### Evaluation algorithm
 -
 -1. Domain commits revision `R` and sends changed entities, not the full image data.
@@ -247,17 +247,17 @@ index b43f5b0..d900773 100644
 +7. Scheduler closes the run as succeeded, failed, or canceled and retains a
 +  bounded run history. A newer authored revision makes the result visibly stale
 +  but does not erase it.
- 
+
  Priority order is direct-manipulation preview, visible settled preview, analysis
  node, explicit save thumbnail, then export. Export may reserve throughput but
  cannot starve interaction.
- 
+
 +Run queue ordering is separate from tile priority. Default Run appends; optional
 +Run Next/front-of-queue is a distinct command. One active workflow run is the P0
 +baseline; bounded backend tile concurrency remains adaptive inside it.
 +
  ### Cancellation
- 
+
  - New parameter commits cancel/supersede older work in the affected downstream
 -  branch.
 +  draft branch but do not silently cancel a captured workflow run. Its completion
@@ -268,9 +268,9 @@ index b43f5b0..d900773 100644
    tiles and long kernel phases.
  - Export cancellation stops scheduling, lets non-interruptible codec calls finish
 @@ -191,9 +222,11 @@ WebGPU backend requirements:
- 
+
  ## 8. Preview Pipeline
- 
+
 -Visible preview demand drives evaluation. The worker produces transferable
 -`ImageBitmap` or bounded RGBA tiles. UI owns only the current and immediately
 -previous bitmap for a preview; replacing one closes/releases the old object.
@@ -279,13 +279,13 @@ index b43f5b0..d900773 100644
 +RGBA tiles. The result registry owns current and immediately previous handles per
 +node; replacing one closes/releases the old object. Node-local and inspector
 +previews subscribe to the same handle and metadata.
- 
+
  While editing:
- 
+
 @@ -202,6 +235,9 @@ While editing:
  3. Newer input supersedes older generations.
  4. After 250 ms idle, settled-quality preview may replace draft.
- 
+
 +Draft, queued, running, cached, succeeded, stale, canceled, and error metadata are
 +orthogonal to the bitmap. Node geometry remains stable when metadata changes.
 +
@@ -300,7 +300,7 @@ index b43f5b0..d900773 100644
 +lease, WebGPU enablement, deployment isolation headers, node widget schema,
 +result-handle ownership, and explicit run queue/history. Each ADR records
  benchmarks/fixtures, rejected alternatives, fallback, and reversal cost.
- 
+
  ## 19. Architecture Definition of Done
 @@ -450,4 +487,7 @@ The architecture closes when boundary contracts compile in a spike, reference
  workloads meet budgets or produce a bounded redesign, storage crash/quota/tab
@@ -326,12 +326,12 @@ index 2a90208..82de49d 100644
 +| Inspector | right, 300 px resizable | optional advanced parameters, metadata, validation, docs, multi-edit |
 +| Queue/history | right drawer/tab | run controls, active progress, recent runs, diagnostics, cancel/retry |
  | Status bar | bottom, 28 px | zoom, graph validity, compute, storage, backend state |
- 
+
  The graph must retain at least 480x320 CSS pixels at supported desktop minimum.
 @@ -41,9 +41,17 @@ landing page. A new project opens a blank graph with the node library ready and
  compact empty-state command in the canvas. Importing several images places Load
  Image nodes in a non-overlapping grid near the viewport center and selects them.
- 
+
 -The inspector is the complete editing surface. Nodes show high-value controls
 -only, preserving graph scanability. Double-clicking a node focuses its first
 -inspector control; `Escape` returns focus to the node.
@@ -346,9 +346,9 @@ index 2a90208..82de49d 100644
 +uses `Ctrl+Enter`; selected output nodes expose **Run branch** in the nearby node
 +toolbox and context menu. The queue/history panel is supporting workspace chrome,
 +not the place where node parameters are authored.
- 
+
  ## 4. Graph Interaction Model
- 
+
 @@ -76,6 +84,10 @@ graph does not add hundreds of tab stops.
  | `Home` / `End` | Focus first/last node in topological then ID order |
  | `Escape` | Cancel gesture/dialog, then clear selection |
@@ -357,7 +357,7 @@ index 2a90208..82de49d 100644
 +| `Ctrl+Shift+Enter` | Run workflow next/front of queue where enabled |
 +| `Ctrl+Alt+Enter` | Interrupt active run |
 +| `Alt+C` | Collapse/expand selected nodes |
- 
+
  The Connect dialog selects output port, compatible target node, and input port
  using ordinary list/combobox controls. It is the non-drag equivalent required by
 @@ -109,21 +121,32 @@ path. Default conflict-free alternates are `Ctrl+Shift+B`, `Ctrl+Shift+M`, and
@@ -373,14 +373,14 @@ index 2a90208..82de49d 100644
 +| status / warning / run progress  |
  +----------------------------------+
  ```
- 
+
 +Node bodies are interactive work surfaces, not summaries. Compact widget rows use
 +the same shared controls and validation as the inspector. Inputs, sliders, selects,
 +preview pan/zoom, and buttons carry the no-drag/no-pan contract. Pointer events on
 +widgets never begin node move, canvas pan, or edge creation.
 +
  ### Stable dimensions
- 
+
 -- Default node width: 240 px; minimum 180 px; maximum 560 px.
 +- Default simple-node width: 240 px; interactive/preview nodes may default to
 +  280-360 px; minimum 180 px; maximum 640 px.
@@ -394,9 +394,9 @@ index 2a90208..82de49d 100644
 +  bounds. Image arrival cannot move neighboring nodes or handles.
 +- Collapse hides widgets and preview but retains title, state, ports, dirty/result
 +  indicator, and authored values. Collapse is authored UI state and round-trips.
- 
+
  ### State presentation
- 
+
 @@ -135,6 +158,11 @@ path. Default conflict-free alternates are `Ctrl+Shift+B`, `Ctrl+Shift+M`, and
  | Bypassed | diagonal route marker, “Bypassed” text, dimmed processing body |
  | Muted | output-port stop marker, “Muted” text, downstream invalidity if required |
@@ -412,7 +412,7 @@ index 2a90208..82de49d 100644
 @@ -152,11 +180,44 @@ in forced colors and monochrome screenshots.
  - Edges inherit source type styling but selected/focused/error overlays are
    independent. Animated edges are not used for ordinary compute status.
- 
+
 -## 6. Inspector Contract
 +### Node selection toolbox and context menu
 +
@@ -446,7 +446,7 @@ index 2a90208..82de49d 100644
 +  ordinary controls cannot be inspector-only.
 +
 +### Inspector role
- 
+
  Inspector groups controls by Input, Processing, Appearance, Output, and Advanced.
 -Groups are unframed sections, not cards. High-frequency controls start expanded;
 -Advanced starts collapsed but retains state per node type.
@@ -454,22 +454,22 @@ index 2a90208..82de49d 100644
 +advanced options, metadata, detailed diagnostics, documentation, larger preview,
 +and multi-selection editing. Closing the inspector cannot make a principal node
 +workflow inoperable.
- 
+
  Every control has visible label, unit, current value, valid range, reset, and
  inline validation. Slider plus numeric field is one logical setting. Slider arrow
 @@ -167,7 +228,7 @@ Changes show draft preview continuously when affordable, but undo history gets
  one command per completed gesture/edit session. `Escape` during a slider drag or
  uncommitted text edit restores the before value.
- 
+
 -### Node-specific inspector controls
 +### Shared node/inspector control inventories
- 
+
  - **Load Image:** asset summary and replace/relink; output Color Image/Mask;
    mask source, invert, and clamp. P1 Color Profile offers Auto, Embedded, Force
 @@ -190,8 +251,9 @@ parameter schemas; it does not create private slider, color, or validation UI.
- 
+
  ## 7. Preview Surface
- 
+
 -- Preview is never nested in a decorative card. It fills its region against a
 -  checkerboard or user-selected background.
 +- Preview output is rendered directly inside Preview and result-producing nodes.
@@ -481,7 +481,7 @@ index 2a90208..82de49d 100644
 @@ -202,6 +264,26 @@ parameter schemas; it does not create private slider, color, or validation UI.
  - Error, empty, stale, and OOM states occupy stable dimensions and never resize
    surrounding controls.
- 
+
 +## 7A. Workflow Run and Queue UX
 +
 +- **Run workflow** is a primary app-bar command with text/icon, accessible name,
@@ -503,7 +503,7 @@ index 2a90208..82de49d 100644
 +  without moving focus.
 +
  ## 8. HSL Color Picker
- 
+
  ### Design-source dependency
 @@ -324,10 +406,12 @@ instant state changes. Nothing flashes more than three times per second.
  | Commands | icon button, text button, split button, toolbar, command palette, menu |
@@ -515,7 +515,7 @@ index 2a90208..82de49d 100644
  | Data/media | image preview, mask preview, checkerboard, swatch, comparison, pixel readout |
  | Project | project item, import report, asset relinker, recovery item, storage meter |
 +| Execution | run button, interrupt button, queue badge, run row, node progress, run diagnostics |
- 
+
  Every component has normal, hover, focus-visible, pressed/selected, disabled,
  error, loading where applicable, high-contrast, light, and dark evidence. A
 @@ -347,6 +431,10 @@ Manual and automated checks must prove:
@@ -526,9 +526,9 @@ index 2a90208..82de49d 100644
 +  inspector; node-local widgets expose visible labels and validation.
 +9. Node widgets do not trigger drag/pan, and node-local preview controls have
 +  keyboard equivalents.
- 
+
  ## 13. UX Definition of Done
- 
+
 diff --git a/documentation/07-quality-evaluation.md b/documentation/07-quality-evaluation.md
 index 0e996bb..15f1a0c 100644
 --- a/documentation/07-quality-evaluation.md
@@ -545,9 +545,9 @@ index 0e996bb..15f1a0c 100644
 +  output ancestors. Undemanded branches produce no execution events.
 +- A stale run/revision/generation/token completion cannot replace current output.
 +- Identical clean identities report cached/skipped and do not execute their kernel.
- 
+
  ### Image comparison
- 
+
 @@ -148,6 +156,14 @@ alpha defects. Diff images are evidence, not the sole detector.
  - Saturate export work, then edit a visible node; assert interaction priority is
    maintained.
@@ -560,9 +560,9 @@ index 0e996bb..15f1a0c 100644
 +  run closes canceled, reservations release, and no canceled result publishes.
 +- Render node widget schemas in node and inspector hosts and property-check
 +  identical writes/defaults/validation/reset/undo behavior.
- 
+
  ## 7. Persistence and Interchange Tests
- 
+
 @@ -183,12 +199,23 @@ alpha defects. Diff images are evidence, not the sole detector.
  | E2E-010 | JSON export/import and PNG restoration | schema validation, graph parity, metadata failure cases |
  | E2E-011 | PNG/JPEG/TIFF export/cancel | decoded artifact properties; no partial file on cancel |
@@ -572,12 +572,12 @@ index 0e996bb..15f1a0c 100644
 +| E2E-015 | Run selected output branch | selected output identity, exact upstream event set, unrelated branch inactivity |
 +| E2E-016 | Interrupt and stale run race | cancel feedback, released work, prior result retention, stale completion rejection |
 +| E2E-017 | Node/inspector field parity | same field edited in both hosts, one authored key, undo and serialization parity |
- 
+
  Playwright must use real event input. DOM presence/classes alone do not prove
  visibility or usability. Overlays, menus, dialogs, ports, and previews require
  bounding/clipping/hit-test checks and screenshots; canvas/bitmap content requires
  nonblank pixel and expected-sample checks.
- 
+
 +For node-first journeys, Playwright starts with the inspector closed. Opening the
 +inspector is allowed only in the explicit parity/detail journey. Evidence must
 +sample the bitmap inside the output node, prove controls are hit-testable without
@@ -585,7 +585,7 @@ index 0e996bb..15f1a0c 100644
 +prove stable geometry.
 +
  ## 9. Accessibility Evaluation
- 
+
  Automated checks run on every component state and principal view, but release
 @@ -267,6 +294,10 @@ P0 release is blocked by any of:
  - Seed traceability gap or unresolved blocking decision.
@@ -595,9 +595,9 @@ index 0e996bb..15f1a0c 100644
 +  output result is unavailable inside its node.
 +- Run/partial-run/interrupt/cache/stale behavior lacks objective queue and node
 +  execution evidence, or a draft preview is represented as a completed run.
- 
+
  ## 14. Quality Definition of Done
- 
+
 diff --git a/documentation/08-implementation-plan.md b/documentation/08-implementation-plan.md
 index 9a3b165..0359974 100644
 --- a/documentation/08-implementation-plan.md
@@ -628,7 +628,7 @@ index 9a3b165..0359974 100644
 @@ -218,11 +223,57 @@ preview, and see deterministic off-main-thread pixels.
  - Stale result race and cancellation tests publish only newest generation.
  - UI remains within graph/input budgets during standard preview evaluation.
- 
+
 +### R1: Node-first workbench alignment
 +
 +**Outcome:** The graph becomes a ComfyUI-informed operational workbench: common
@@ -672,16 +672,16 @@ index 9a3b165..0359974 100644
 +  samples, queue capture, focus log, and accessibility output.
 +
  ### M5: Resize and correction nodes
- 
+
  **Outcome:** Users can perform all versioned resize methods and color/brightness
  corrections with identity-safe defaults and backend parity.
- 
+
 +**Current status:** Scalar references and initial transform-worker evidence exist;
 +user-facing controls implemented only in the inspector are provisional and must
 +move to shared node widgets through R1 before this milestone can close.
 +
  **Work packages**
- 
+
  - M5.1 Implement type-aware resize geometry, edge modes, presets, and catalog v1,
 @@ -230,8 +281,9 @@ corrections with identity-safe defaults and backend parity.
  - M5.2 Implement Color Correction ordered pipeline and common mask mixing.
@@ -692,18 +692,18 @@ index 9a3b165..0359974 100644
 +- M5.4 Add tile halos, cache keys, schema-driven node controls with inspector
 +  mirrors, node-local draft/result state, explicit run progress, cancellation,
 +  and performance optimizations for these nodes.
- 
+
  **Exit evidence**
- 
+
 @@ -240,6 +292,8 @@ corrections with identity-safe defaults and backend parity.
  - Neutral controls are identity; alpha is unchanged.
  - WASM and accepted GPU implementations match scalar tolerances.
  - Repeated standard slider workflow meets preview and memory budgets.
 +- Principal resize/correction workflow runs with inspector closed and displays the
 +  output in its Preview node; explicit Run/partial-run records the correct branch.
- 
+
  ### M6: Blend and merge
- 
+
 @@ -252,7 +306,8 @@ catalogs, explicit ordering, opacity/mask, dimensions, and correct alpha.
    standard modes.
  - M6.2 Implement creative extension catalog one formula at a time.
@@ -712,7 +712,7 @@ index 9a3b165..0359974 100644
 +  mask, center/max canvas, bypass/mute, node-local controls/result preview, and
 +  serialization.
  - M6.4 Add layer/dimension/transparent-edge UX and full fixture matrix.
- 
+
  **Exit evidence**
 @@ -274,7 +329,7 @@ multiple parallel lights produce the specified 2D shaded material/merge output.
  - M7.2 Implement luminance/channel height, invert, central gradient, strength,
@@ -729,11 +729,11 @@ index 9a3b165..0359974 100644
    and all future color fields; prohibit duplicate picker implementations.
 +- M8.5 Render ordinary picker hosts in nodes first and mirror the same component in
 +  inspector/details; analysis swatches and comparison results render in-node.
- 
+
  **Exit evidence**
- 
+
 @@ -318,6 +375,8 @@ restore valid workflow metadata from PNG without risking pixel import.
- 
+
  - M9.1 Implement full-resolution export coordinator, memory preflight, progress,
    cancellation, temporary artifact lifecycle, and deterministic quantization.
 +- M9.1A Integrate export as an explicit run target with queue/history and node-local
@@ -747,7 +747,7 @@ index 9a3b165..0359974 100644
    all processing outputs and cannot close early.
 +- No downstream user-facing node milestone can close before R1. Mathematical,
 +  codec, or worker tasks may proceed in isolation but retain provisional UX status.
- 
+
  Integration occurs continuously through vertical fixtures. No branch may defer
  schema, worker, accessibility, or tests to a final merge phase.
 diff --git a/documentation/09-traceability-decisions-risks.md b/documentation/09-traceability-decisions-risks.md
@@ -755,9 +755,9 @@ index b8fb95f..01a99e5 100644
 --- a/documentation/09-traceability-decisions-risks.md
 +++ b/documentation/09-traceability-decisions-risks.md
 @@ -56,6 +56,16 @@ intent.
- 
+
  No actionable seed statement is intentionally unmapped.
- 
+
 +### Post-seed user directives
 +
 +| Source ID | Directive | Requirements/contracts | Milestone | Verification |
@@ -769,7 +769,7 @@ index b8fb95f..01a99e5 100644
 +editing the immutable seed.
 +
  ## 3. Requirement-to-Contract Summary
- 
+
  | Requirement family | Normative contract | Verification family |
 @@ -90,6 +100,9 @@ No actionable seed statement is intentionally unmapped.
  | DEC-011 | Blocked visual only | Exact HSL picker visuals wait for approved design source. | SPIKE-008 found no approved source; exact similarity cannot be derived from absent evidence. |
@@ -778,9 +778,9 @@ index b8fb95f..01a99e5 100644
 +| DEC-014 | Accepted | Common controls and output previews are node-local; inspector is a schema-driven secondary detail/multi-edit surface. | User directive USR-001 and ComfyUI property/output-node familiarity; reopen only if objective large-graph or accessibility gates cannot be met with detail reduction. |
 +| DEC-015 | Accepted | Workflow execution is explicit: Run/partial-run creates immutable queue records distinct from authored edits and draft previews. | Prevents implicit background work from masquerading as a completed workflow and enables observable cancel/cache/stale behavior. |
 +| DEC-016 | Accepted | ComfyUI is a behavioral reference, not a visual/template dependency. | Preserve TextureFlow domain, design tokens, typed math, and accessibility while adopting familiar node management/execution principles. |
- 
+
  ## 5. Risk Register
- 
+
 @@ -113,6 +126,11 @@ No actionable seed statement is intentionally unmapped.
  | RSK-016 | Hidden data remains in transparent pixels or EXIF | Medium / High | canonical transparent black and export re-encode/metadata allowlist |
  | RSK-017 | HSL picker parity claim is invented without source | Current / High | blocked decision and source-based review before claim |
@@ -790,7 +790,7 @@ index b8fb95f..01a99e5 100644
 +| RSK-021 | Implicit draft preview is confused with workflow execution/current result | High / High | explicit run IDs and queue records; distinct draft/run/result state; stale revision publication gate |
 +| RSK-022 | Interactive widgets drag/pan nodes or make keyboard focus unusable | High / High | no-drag/no-pan ownership, roving graph focus, widget keyboard paths, pointer hit-test and 200% zoom evaluation |
 +| RSK-023 | Queue/history grows without bounds or becomes authored workflow state | Medium / Medium | bounded ephemeral history, result handle release, workflow schema exclusion, retention settings |
- 
+
  Risk owners are assigned when implementation roles are staffed. Critical risks
  cannot be accepted without explicit product/engineering review and user-visible
 diff --git a/documentation/evidence/m2/M2-closure.md b/documentation/evidence/m2/M2-closure.md
@@ -799,7 +799,7 @@ index 0aa110b..ee20fc9 100644
 +++ b/documentation/evidence/m2/M2-closure.md
 @@ -1,5 +1,11 @@
  # M2 Closure
- 
+
 +> **2026-08-15 amendment:** Graph domain, typed edges, command, workflow, and
 +> accessibility evidence remains accepted. Node presentation/management UX is
 +> reopened through R1 because common controls and results must move into nodes and
@@ -807,7 +807,7 @@ index 0aa110b..ee20fc9 100644
 +> satisfy `10-node-first-workbench-update.md`.
 +
  ## Outcome
- 
+
  Users can create and edit a typed, accessible DAG independently of image
 diff --git a/documentation/evidence/m4/M4-closure.md b/documentation/evidence/m4/M4-closure.md
 index b4ba16a..e2f2526 100644
@@ -815,12 +815,12 @@ index b4ba16a..e2f2526 100644
 +++ b/documentation/evidence/m4/M4-closure.md
 @@ -1,5 +1,10 @@
  # M4 Closure
- 
+
 +> **2026-08-15 amendment:** Import, asset, worker, mask math, cache, generation,
 +> and pixel evidence remains accepted. Preview placement/execution UX is reopened
 +> through R1: output pixels must render inside the Preview node and draft preview
 +> must be distinct from explicit workflow runs.
 +
  ## Outcome
- 
+
  Users can safely import PNG/JPEG assets, connect Load Image to Image Preview, and
