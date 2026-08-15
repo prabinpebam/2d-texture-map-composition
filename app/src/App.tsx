@@ -21,6 +21,7 @@ import {
   Plus,
   Redo2,
   Search,
+  Save,
   Settings,
   SlidersHorizontal,
   Sun,
@@ -38,6 +39,7 @@ import {
   MiniMap,
   Panel,
   ReactFlow,
+  useUpdateNodeInternals,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
@@ -92,6 +94,37 @@ const THEME_ICONS = {
 
 const NODE_TYPES = { workflow: WorkflowNode }
 
+function NodeInternalsSync({ nodeIdKey }: { nodeIdKey: string }) {
+  const updateNodeInternals = useUpdateNodeInternals()
+
+  useEffect(() => {
+    function refresh() {
+      for (const nodeId of nodeIdKey.split('\0')) {
+        if (nodeId) updateNodeInternals(nodeId)
+      }
+    }
+    let secondFrame = 0
+    let settledRefresh = 0
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        refresh()
+        settledRefresh = window.setTimeout(refresh, 100)
+      })
+    })
+    return () => {
+      cancelAnimationFrame(firstFrame)
+      cancelAnimationFrame(secondFrame)
+      window.clearTimeout(settledRefresh)
+    }
+  }, [nodeIdKey, updateNodeInternals])
+
+  return null
+}
+
+function formatStorage(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 function App() {
   const [theme, setTheme] = useState<ThemePreference>('system')
   const [catalogQuery, setCatalogQuery] = useState('')
@@ -139,7 +172,7 @@ function App() {
   const hydrateDocument = useGraphStore((state) => state.hydrateDocument)
   const undo = useGraphStore((state) => state.undo)
   const redo = useGraphStore((state) => state.redo)
-  const projectSaveStatus = useProjectPersistence(
+  const projectPersistence = useProjectPersistence(
     graphDocument,
     hydrateDocument,
   )
@@ -496,13 +529,13 @@ function App() {
 
         <div className="save-state" role="status">
           <span className="status-dot" aria-hidden="true" />
-          {projectSaveStatus === 'loading'
+          {projectPersistence.status === 'loading'
             ? 'Opening local project'
-            : projectSaveStatus === 'saving'
+            : projectPersistence.status === 'saving'
               ? 'Saving locally'
-              : projectSaveStatus === 'saved'
+              : projectPersistence.status === 'saved'
                 ? 'Saved locally'
-                : projectSaveStatus === 'recovered'
+                : projectPersistence.status === 'recovered'
                   ? 'Recovered prior snapshot'
                   : 'Unsaved changes'}
         </div>
@@ -525,6 +558,13 @@ function App() {
             onClick={redo}
           >
             <Redo2 aria-hidden="true" size={17} />
+          </IconButton>
+          <IconButton
+            disabled={projectPersistence.status === 'loading'}
+            label="Save project"
+            onClick={() => void projectPersistence.saveNow()}
+          >
+            <Save aria-hidden="true" size={17} />
           </IconButton>
           <span className="toolbar-separator" aria-hidden="true" />
           <IconButton
@@ -687,66 +727,78 @@ function App() {
           ref={graphRef}
           tabIndex={-1}
         >
-          <ReactFlow
-            colorMode={theme}
-            edges={flowEdges}
-            fitView
-            fitViewOptions={{ maxZoom: 1 }}
-            maxZoom={2.5}
-            minZoom={0.2}
-            nodeTypes={NODE_TYPES}
-            nodes={flowNodes}
-            onConnect={(connection) => {
-              if (
-                !connection.source ||
-                !connection.target ||
-                !connection.sourceHandle ||
-                !connection.targetHandle
-              ) {
-                return
-              }
-              connectNodes({
-                sourceNodeId: connection.source,
-                sourcePortId: connection.sourceHandle,
-                targetNodeId: connection.target,
-                targetPortId: connection.targetHandle,
-              })
-            }}
-            onNodeClick={(event, node) => selectNode(node.id, event.shiftKey)}
-            onNodeDragStop={(_, node) => moveNode(node.id, node.position)}
-            onPaneClick={clearSelection}
-          >
-            <Background
-              color="var(--graph-dot)"
-              gap={20}
-              size={1.2}
-              variant={BackgroundVariant.Dots}
-            />
-            <Controls position="bottom-left" showInteractive={false} />
-            <MiniMap
-              ariaLabel="Workflow minimap"
-              maskColor="var(--minimap-mask)"
-              pannable
-              position="bottom-right"
-              zoomable
-            />
-            <Panel className="graph-context" position="top-left">
-              <span>Canvas</span>
-              <span aria-hidden="true">/</span>
-              <strong>Untitled workflow</strong>
-            </Panel>
-            {graphDocument.nodes.length === 0 ? (
-              <Panel className="empty-workflow" position="top-center">
-                <span className="empty-icon" aria-hidden="true">
-                  <BoxSelect size={21} />
-                </span>
-                <div>
-                  <strong>No nodes</strong>
-                  <span>Select a node template from the library.</span>
-                </div>
+          {projectPersistence.status === 'loading' ? (
+            <div className="graph-loading" role="status">
+              Opening local project
+            </div>
+          ) : (
+            <ReactFlow
+              colorMode={theme}
+              edges={flowEdges}
+              fitView
+              fitViewOptions={{ maxZoom: 1 }}
+              key={flowNodes[0]?.id ?? 'empty-graph'}
+              maxZoom={2.5}
+              minZoom={0.2}
+              nodeTypes={NODE_TYPES}
+              nodes={flowNodes}
+              onConnect={(connection) => {
+                if (
+                  !connection.source ||
+                  !connection.target ||
+                  !connection.sourceHandle ||
+                  !connection.targetHandle
+                ) {
+                  return
+                }
+                connectNodes({
+                  sourceNodeId: connection.source,
+                  sourcePortId: connection.sourceHandle,
+                  targetNodeId: connection.target,
+                  targetPortId: connection.targetHandle,
+                })
+              }}
+              onNodeClick={(event, node) => selectNode(node.id, event.shiftKey)}
+              onNodeDragStop={(_, node) => moveNode(node.id, node.position)}
+              onPaneClick={clearSelection}
+            >
+              <NodeInternalsSync
+                nodeIdKey={graphDocument.nodes
+                  .map((node) => node.id)
+                  .join('\0')}
+              />
+              <Background
+                color="var(--graph-dot)"
+                gap={20}
+                size={1.2}
+                variant={BackgroundVariant.Dots}
+              />
+              <Controls position="bottom-left" showInteractive={false} />
+              <MiniMap
+                ariaLabel="Workflow minimap"
+                maskColor="var(--minimap-mask)"
+                pannable
+                position="bottom-right"
+                zoomable
+              />
+              <Panel className="graph-context" position="top-left">
+                <span>Canvas</span>
+                <span aria-hidden="true">/</span>
+                <strong>Untitled workflow</strong>
               </Panel>
-            ) : null}
-          </ReactFlow>
+              {graphDocument.nodes.length === 0 ? (
+                <Panel className="empty-workflow" position="top-center">
+                  <span className="empty-icon" aria-hidden="true">
+                    <BoxSelect size={21} />
+                  </span>
+                  <div>
+                    <strong>No nodes</strong>
+                    <span>Select a node template from the library.</span>
+                  </div>
+                </Panel>
+              ) : null}
+            </ReactFlow>
+          )}
         </main>
 
         <aside
@@ -1008,7 +1060,19 @@ function App() {
                       ? 'Recovery verified'
                       : 'Unavailable'}
                   </strong>
-                  <span>Atomic · rollback · lease · broadcast</span>
+                  <span>
+                    Atomic · rollback · lease · broadcast ·{' '}
+                    {projectPersistence.durability === 'persistent'
+                      ? 'persistent'
+                      : 'best effort'}
+                  </span>
+                  {projectPersistence.usageBytes !== null &&
+                  projectPersistence.quotaBytes !== null ? (
+                    <span>
+                      {formatStorage(projectPersistence.usageBytes)} of{' '}
+                      {formatStorage(projectPersistence.quotaBytes)} used
+                    </span>
+                  ) : null}
                 </dd>
               </div>
               <div>

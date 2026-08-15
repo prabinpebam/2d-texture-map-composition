@@ -388,6 +388,14 @@
   background: var(--canvas);
 }
 
+.graph-loading {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
 .graph-region .react-flow__controls,
 .graph-region .react-flow__minimap {
   overflow: hidden;

@@ -58,12 +58,12 @@ describe('workspace shell', () => {
     expect(library).toHaveFocus()
   })
 
-  it('adds a catalog node through the inspector command', () => {
+  it('adds a catalog node through the inspector command', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'Load image' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add to canvas' }))
 
-    expect(screen.getByLabelText('Load image node')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Load image node')).toBeInTheDocument()
     expect(screen.getByText('1 nodes')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
   })
