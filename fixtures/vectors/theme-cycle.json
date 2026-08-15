@@ -1,0 +1,5 @@
+{
+  "id": "theme-cycle-v1",
+  "input": ["system", "light", "dark"],
+  "expected": ["light", "dark", "system"]
+}

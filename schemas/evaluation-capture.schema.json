@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["captureVersion", "appRevision", "browser", "observations"],
+  "properties": {
+    "captureVersion": { "const": 1 },
+    "appRevision": { "type": "string", "minLength": 1 },
+    "browser": {
+      "type": "object",
+      "required": ["name", "version", "viewport"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "viewport": {
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["sequence", "kind", "raw"],
+        "properties": {
+          "sequence": { "type": "integer", "minimum": 0 },
+          "kind": { "type": "string", "minLength": 1 },
+          "raw": true
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

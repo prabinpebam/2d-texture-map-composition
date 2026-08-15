@@ -1,0 +1,13 @@
+{
+  "$schema": "./manifest.schema.json",
+  "version": 1,
+  "fixtures": [
+    {
+      "id": "theme-cycle-v1",
+      "path": "vectors/theme-cycle.json",
+      "sha256": "019f5b229ab85b8147cd84dce50baa389bcf1a73ba64c781acbb9aa7688762be",
+      "provenance": "Repository-authored M0 deterministic vector",
+      "purpose": "Proves the system-light-dark theme preference cycle"
+    }
+  ]
+}

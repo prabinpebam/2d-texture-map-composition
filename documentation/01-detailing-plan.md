@@ -366,6 +366,10 @@ and objective review criteria.
 - Define raw execution and DOM/artifact capture separately from pass/fail detectors.
 - Define test browser/device matrix, deterministic settings, seed control, and
   golden-update governance.
+- Define UX validation loops that use Playwright to open the actual app and prove
+  a user can complete each intended task with coherent paint, interaction,
+  feedback, and recovery. Functional tests are supporting evidence, not the UX
+  evaluator.
 - Define release gates and defect severity.
 
 **Evidence and evaluator**
@@ -375,8 +379,10 @@ and objective review criteria.
 - Evaluation: every normative requirement has a credible verification method and
   every named algorithm is proven behaviorally distinct where it should be.
 
-**Exit condition:** zero P0/P1 requirements lack verification; performance and
-recovery claims use realistic repeated workflows rather than isolated smoke tests.
+**Exit condition:** zero P0/P1 requirements lack verification; every meaningful
+implementation milestone has passing actual-app Playwright UX evidence; and
+performance and recovery claims use realistic repeated workflows rather than
+isolated smoke tests.
 
 ### W09: Implementation planning
 

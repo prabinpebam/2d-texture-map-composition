@@ -40,6 +40,33 @@ digest, algorithm version, and environment.
 | Recovery/security | malformed data and failures preserve availability/authored work | fuzz corpus, fault injection |
 | Compatibility | target browsers decode, compute, persist, and export equivalently | browser matrix |
 
+### Mandatory actual-app UX evaluation
+
+The validation loop evaluates the user experience: can a user complete the
+intended task in the actual application with the expected visible result,
+interaction, feedback, and recovery? It is not a loop for proving that functions,
+types, or code paths execute. Unit, property, numeric, schema, integration, lint,
+typecheck, and build checks remain mandatory engineering evidence, but they do
+not answer the UX question and cannot close this loop.
+
+Every meaningful implementation milestone must run Playwright against the actual
+application, not a component mock, static DOM fixture, or synthesized client
+environment. Playwright starts and owns the app server, opens the app in a real
+target browser, and completes the milestone's user task with real pointer and
+keyboard input.
+
+The evaluator must observe and retain raw evidence of visible paint, geometry,
+clipping, overlap, hit testing, focus, state feedback, error/recovery behavior,
+and the final task outcome. It captures screenshots at the states needed to judge
+the experience. Canvas, image, mask, and bitmap work additionally proves nonblank
+paint and samples semantic pixels/values. DOM presence, classes, ARIA state, or a
+successful API response alone never prove that the UX works.
+
+If the intended task cannot be completed in Playwright as a user would complete
+it, the experience remains open even when all functional tests pass. If
+Playwright cannot open the actual app or target browser, the milestone is blocked
+and cannot be committed as complete.
+
 ## 4. Fixture Catalog
 
 ### Pixel primitives
@@ -238,10 +265,14 @@ P0 release is blocked by any of:
 - Critical/high exploitable dependency or parser vulnerability.
 - Export artifact not independently decodable with required properties.
 - Seed traceability gap or unresolved blocking decision.
+- Missing or failing Playwright UX evidence from opening the actual app and
+  completing the intended user task for a claimed implementation milestone.
 
 ## 14. Quality Definition of Done
 
-Quality planning closes when every normative requirement has a credible test,
-fixtures expose semantic differences, captures preserve raw evidence, release
-gates are automated where possible and explicitly manual otherwise, and failure
-at a higher level identifies the smallest test/implementation loop to reopen.
+Quality planning closes when every normative requirement has credible supporting
+tests, fixtures expose semantic differences, captures preserve raw evidence,
+actual-app Playwright UX evaluation is mandatory for every implementation
+milestone, release gates are automated where possible and explicitly manual
+otherwise, and failure at a higher level identifies the smallest UX or
+implementation loop to reopen.

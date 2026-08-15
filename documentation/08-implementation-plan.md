@@ -20,6 +20,9 @@ not time boxes. A milestone closes only with its objective evidence.
 - Add each named algorithm with discriminating fixtures, not a shared placeholder.
 - Schema and algorithm versioning begin with the first saved fixture, not at release.
 - Reopen the smallest milestone/work package that fails a higher-level gate.
+- Do not close or commit an implementation milestone until Playwright opens the
+  actual app in a real target browser and proves the user can complete the
+  milestone's intended task with the expected visible experience.
 
 ## 3. Planned Repository Shape
 
@@ -49,7 +52,8 @@ not time boxes. A milestone closes only with its objective evidence.
   documentation/
 ```
 
-One root package manager lockfile owns JavaScript dependencies. Rust is pinned by
+`app/package-lock.json` is the single JavaScript dependency lockfile. The
+repository-root `.npmrc` controls its managed registry. Rust is pinned by
 toolchain file and Cargo.lock. Generated WASM/artifacts are build output, not
 hand-edited source.
 
@@ -76,6 +80,19 @@ flowchart TD
 
 ## 5. Milestones
 
+### Mandatory milestone UX evaluation
+
+Every milestone M0 through M10 ends with a Playwright UX evaluation against a
+Playwright-owned actual app instance. The scenario must express the user goal,
+open the app in a real target browser, perform the task with real input, and
+judge visible paint, geometry, clipping, hit testing, focus, feedback, recovery,
+and final outcome with retained screenshots/state evidence. Milestones that add
+canvas or image output also inspect real painted pixels or semantic image values.
+
+Functional tests, typecheck, lint, build, and numeric conformance remain required
+supporting checks, but a passing engineering suite without a passing user-task
+Playwright evaluation leaves the milestone in progress.
+
 ### M0: Foundation and quality harness
 
 **Outcome:** A reproducible local project builds, tests, and runs an accessible
@@ -97,7 +114,10 @@ empty tool shell with enforceable module boundaries.
 **Exit evidence**
 
 - Clean install/build/typecheck/unit/E2E locally from repository instructions.
-- Empty shell is keyboard navigable at target viewport/zoom and axe has no
+- Playwright opens the actual app and proves a first-time user can orient in the
+  empty workspace, browse a node template, see the corresponding inspector state,
+  change theme, and move among regions by keyboard without clipped, overlapping,
+  or non-hit-testable UI; screenshot evidence is retained and axe has no
   violations.
 - Dependency/license report has no blocking finding.
 - Module-boundary test prevents UI importing IndexedDB or kernel internals.
@@ -369,7 +389,8 @@ also requires formula/version/fixture/tolerance.
 A work item is done when code and schema/docs agree; unit/conformance/integration
 tests pass; applicable pointer/keyboard/visual/error states are implemented;
 captured evidence proves the semantic claim; performance/security impact is
-checked; no stale result/resource leak remains; and traceability is updated.
+checked; Playwright proves the intended user task works in the actual app; no
+stale result/resource leak remains; and traceability is updated.
 
 ## 9. Project Completion
 

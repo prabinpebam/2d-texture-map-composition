@@ -89,6 +89,7 @@ No actionable seed statement is intentionally unmapped.
 | DEC-010 | Provisional | Plain JSON references assets; future package may embed them. | Avoid huge base64 JSON; reopen before M9 after packaging prototype. |
 | DEC-011 | Blocked visual only | Exact HSL picker visuals wait for approved design source. | Exact similarity cannot be derived from absent evidence. |
 | DEC-012 | Spike pending | TIFF implementation/capabilities depend on codec evidence. | No browser-native TIFF encoding contract. |
+| DEC-013 | Accepted | Validation loops are mandatory Playwright UX evaluations that open the actual app and prove the intended user task, not functional code test loops. | Prevents unit/build/DOM-only evidence from closing user-experience outcomes. |
 
 ## 5. Risk Register
 
@@ -137,6 +138,7 @@ failure behavior.
   persistence, and edge cases are cross-cutting gates.
 - [x] Blend/resampling/normal/light/color semantics are bounded and versioned.
 - [x] Implementation milestones are dependency ordered with objective exit evidence.
+- [x] Actual-app Playwright UX evaluation is a mandatory milestone and release gate.
 - [ ] HSL picker design source obtained and mapped.
 - [ ] Implementation spikes executed and ADRs finalized.
 - [ ] Implementation and release evidence produced.

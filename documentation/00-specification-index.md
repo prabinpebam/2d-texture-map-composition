@@ -2,11 +2,13 @@
 
 ## Status
 
-The detailing phase is complete and ready to enter implementation milestones M0
-and M1. The production application has not been implemented. Exact HSL picker
-visual parity and several architecture capabilities remain intentionally gated by
-source evidence and executable spikes; those gates are defined below rather than
-treated as completed work.
+The detailing phase and implementation milestone M0 are complete. The repository
+now contains a validated React/TypeScript workspace foundation, design-system
+shell, engineering harness, and mandatory Playwright UX evaluator against the
+actual app in Microsoft Edge. Product feature milestones M1-M10 remain to be
+implemented. Exact HSL picker visual parity and several architecture capabilities
+remain intentionally gated by source evidence and executable spikes; those gates
+are defined below rather than treated as completed work.
 
 The human-authored `seed-spec.md` is immutable and remains the source of product
 intent. Derived documents resolve ambiguities without changing that reference.
@@ -32,9 +34,9 @@ responsible workstream.
 
 ## Entry Gate for Implementation
 
-M0 may begin when local toolchain prerequisites are selected and recorded. M1
-must close all required spikes and ADRs before feature milestones depend on their
-results. In particular:
+M0 is closed only with formatting, lint, unit/accessibility, build, dependency,
+and actual-app Playwright UX evidence. M1 must close all required spikes and ADRs
+before feature milestones depend on their results. In particular:
 
 - TIFF capabilities remain hidden until SPIKE-001 passes.
 - Rust/WASM and optional WebGPU remain unaccepted until conformance and workload

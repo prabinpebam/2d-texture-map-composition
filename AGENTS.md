@@ -32,3 +32,22 @@ to public npm registries.
 - Use a concise commit message that states the completed outcome.
 - Do not amend, squash, push, create remote state, or dispatch remote automation
   unless the user explicitly requests it.
+
+## Actual App UX Validation
+
+- Validation and evaluation loops judge the actual user experience and whether a
+  user can complete the intended task as expected. They are not functional code
+  test loops.
+- Every meaningful implementation milestone must be evaluated with Playwright by
+  starting the actual application and opening it in a real target browser.
+- Playwright must own the app instance, use real pointer/keyboard input, and prove
+  the user goal, visible paint, layout, hit testing, feedback, and recovery state
+  for the changed experience.
+- Capture screenshots and relevant browser evidence. Canvas and bitmap features
+  require nonblank paint and sampled semantic pixels/values when introduced.
+- Unit, integration, schema, numeric, lint, typecheck, and build checks remain
+  mandatory supporting engineering evidence, but none can substitute for UX
+  validation of the actual app.
+- If the intended user task cannot be completed in Playwright, the experience is
+  not done even when all functional tests pass. If Playwright cannot open the
+  actual app, the milestone remains incomplete and must not be committed as done.
