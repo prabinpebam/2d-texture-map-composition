@@ -3,13 +3,15 @@ import type { GraphDocument } from '../domain/graph'
 import { ProjectRepository } from '../storage/projectRepository'
 import { serializeGraphWorkflow } from '../workflow/serializeGraphWorkflow'
 
-const PROJECT_ID = 'untitled-workflow'
 const repository = new ProjectRepository()
-let initializationPromise: Promise<{
-  document: GraphDocument | null
-  workflowJson: string | null
-  recovered: boolean
-}> | null = null
+const initializationPromises = new Map<
+  string,
+  Promise<{
+    document: GraphDocument | null
+    workflowJson: string | null
+    recovered: boolean
+  }>
+>()
 
 export type ProjectSaveStatus =
   'loading' | 'saving' | 'saved' | 'recovered' | 'error'
@@ -22,20 +24,24 @@ export interface ProjectPersistenceState {
   saveNow(): Promise<void>
 }
 
-function serialize(document: GraphDocument): string {
+function serialize(
+  document: GraphDocument,
+  projectId: string,
+  projectName: string,
+): string {
   return serializeGraphWorkflow(document, {
-    id: PROJECT_ID,
-    name: 'Untitled workflow',
+    id: projectId,
+    name: projectName,
     viewport: { x: 0, y: 0, zoom: 1 },
   })
 }
 
-async function initializeProject() {
-  const existing = await repository.database.projects.get(PROJECT_ID)
+async function initializeProject(projectId: string, projectName: string) {
+  const existing = await repository.database.projects.get(projectId)
   if (!existing) {
-    await repository.createProject(PROJECT_ID, 'Untitled workflow')
+    await repository.createProject(projectId, projectName)
   }
-  const loaded = await repository.loadProject(PROJECT_ID)
+  const loaded = await repository.loadProject(projectId)
   if (!loaded) {
     return { document: null, workflowJson: null, recovered: false }
   }
@@ -52,18 +58,25 @@ async function initializeProject() {
 export function useProjectPersistence(
   document: GraphDocument,
   hydrateDocument: (document: GraphDocument) => void,
+  projectId: string,
+  projectName: string,
 ): ProjectPersistenceState {
   const [status, setStatus] = useState<ProjectSaveStatus>('loading')
-  const [ready, setReady] = useState(false)
-  const [durability, setDurability] =
-    useState<ProjectPersistenceState['durability']>('checking')
+  const [readyProjectId, setReadyProjectId] = useState<string | null>(null)
+  const [durabilityState, setDurabilityState] = useState<{
+    projectId: string
+    value: ProjectPersistenceState['durability']
+  }>({ projectId: '', value: 'checking' })
   const [storageEstimate, setStorageEstimate] = useState<{
     usageBytes: number | null
     quotaBytes: number | null
   }>({ usageBytes: null, quotaBytes: null })
   const lastSavedJson = useRef<string | null>(null)
   const saveQueue = useRef(Promise.resolve())
-  const persistenceRequested = useRef(false)
+  const persistenceRequestedFor = useRef<string | null>(null)
+  const ready = readyProjectId === projectId
+  const durability =
+    durabilityState.projectId === projectId ? durabilityState.value : 'checking'
 
   const refreshStorageEstimate = useCallback(async () => {
     const estimate = await navigator.storage?.estimate?.()
@@ -77,7 +90,7 @@ export function useProjectPersistence(
     (workflowJson: string): Promise<void> => {
       setStatus('saving')
       const operation = saveQueue.current.then(async () => {
-        await repository.saveSnapshot(PROJECT_ID, workflowJson)
+        await repository.saveSnapshot(projectId, workflowJson)
         lastSavedJson.current = workflowJson
         await refreshStorageEstimate()
         setStatus('saved')
@@ -85,58 +98,101 @@ export function useProjectPersistence(
       saveQueue.current = operation.catch(() => setStatus('error'))
       return operation
     },
-    [refreshStorageEstimate],
+    [projectId, refreshStorageEstimate],
   )
 
   useEffect(() => {
     let active = true
-    initializationPromise ??= initializeProject()
-    void initializationPromise
+    lastSavedJson.current = null
+    hydrateDocument({ nodes: [], edges: [] })
+    let initializationPromise = initializationPromises.get(projectId)
+    if (!initializationPromise) {
+      initializationPromise = initializeProject(projectId, projectName)
+      initializationPromises.set(projectId, initializationPromise)
+    }
+    const pendingInitialization = initializationPromise
+    void pendingInitialization
       .then((result) => {
+        if (initializationPromises.get(projectId) === pendingInitialization) {
+          initializationPromises.delete(projectId)
+        }
         if (!active) return
         if (result.document) hydrateDocument(result.document)
         lastSavedJson.current = result.workflowJson
-        setReady(true)
+        setReadyProjectId(projectId)
         setStatus(result.recovered ? 'recovered' : 'saved')
         void refreshStorageEstimate()
       })
       .catch(() => {
-        if (active) setStatus('error')
+        if (initializationPromises.get(projectId) === pendingInitialization) {
+          initializationPromises.delete(projectId)
+        }
+        if (active) {
+          setReadyProjectId(projectId)
+          setStatus('error')
+        }
       })
     return () => {
       active = false
     }
-  }, [hydrateDocument, refreshStorageEstimate])
+  }, [hydrateDocument, projectId, projectName, refreshStorageEstimate])
 
   useEffect(() => {
     if (!ready) return
-    const workflowJson = serialize(document)
+    const workflowJson = serialize(document, projectId, projectName)
     if (workflowJson === lastSavedJson.current) return
 
     const timeout = window.setTimeout(() => {
       void persistWorkflow(workflowJson)
     }, 500)
     return () => window.clearTimeout(timeout)
-  }, [document, persistWorkflow, ready])
+  }, [document, persistWorkflow, projectId, projectName, ready])
 
   useEffect(() => {
-    if (!ready || document.nodes.length === 0 || persistenceRequested.current) {
+    if (
+      !ready ||
+      document.nodes.length === 0 ||
+      persistenceRequestedFor.current === projectId
+    ) {
       return
     }
-    persistenceRequested.current = true
+    persistenceRequestedFor.current = projectId
     void navigator.storage
       ?.persist?.()
       .then((persistent) =>
-        setDurability(persistent ? 'persistent' : 'best-effort'),
+        setDurabilityState({
+          projectId,
+          value: persistent ? 'persistent' : 'best-effort',
+        }),
       )
-      .catch(() => setDurability('best-effort'))
-  }, [document.nodes.length, ready])
+      .catch(() => setDurabilityState({ projectId, value: 'best-effort' }))
+  }, [document.nodes.length, projectId, ready])
 
   return {
-    status,
+    status: ready ? status : 'loading',
     durability,
     usageBytes: storageEstimate.usageBytes,
     quotaBytes: storageEstimate.quotaBytes,
-    saveNow: () => persistWorkflow(serialize(document)),
+    saveNow: () => persistWorkflow(serialize(document, projectId, projectName)),
   }
+}
+
+export function listLocalProjects() {
+  return repository.listProjects()
+}
+
+export async function createLocalProject(name: string) {
+  const project = await repository.createProject(crypto.randomUUID(), name)
+  initializationPromises.delete(project.id)
+  return project
+}
+
+export async function renameLocalProject(projectId: string, name: string) {
+  await repository.renameProject(projectId, name)
+  initializationPromises.delete(projectId)
+}
+
+export async function deleteLocalProject(projectId: string) {
+  await repository.deleteProject(projectId)
+  initializationPromises.delete(projectId)
 }

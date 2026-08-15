@@ -1,4 +1,34 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function expectSnapshotContains(
+  page: Page,
+  projectId: string,
+  nodeType: string,
+) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        async ({ targetProjectId, targetNodeType }) => {
+          const moduleUrl = '/src/storage/projectRepository.ts'
+          const { TextureFlowDatabase } = await import(moduleUrl)
+          const database = new TextureFlowDatabase('textureflow')
+          try {
+            const project = await database.projects.get(targetProjectId)
+            const snapshot = project?.currentSnapshotId
+              ? await database.snapshots.get(project.currentSnapshotId)
+              : null
+            return snapshot
+              ? (await snapshot.workflowJson.text()).includes(targetNodeType)
+              : false
+          } finally {
+            database.close()
+          }
+        },
+        { targetProjectId: projectId, targetNodeType: nodeType },
+      ),
+    )
+    .toBe(true)
+}
 
 test('project repository recovers prior valid snapshot and deduplicates assets', async ({
   page,
@@ -36,6 +66,15 @@ test('project repository recovers prior valid snapshot and deduplicates assets',
         'copy.png',
         'source',
       )
+      await repository.renameProject('project-1', 'Renamed recovery project')
+      const renamedProject = await repository.database.projects.get('project-1')
+      await repository.createProject('delete-me', 'Delete me')
+      await repository.saveSnapshot(
+        'delete-me',
+        '{"revision":0}',
+        'delete-snapshot',
+      )
+      await repository.deleteProject('delete-me')
 
       return {
         currentRevisionBeforeCorruption: beforeCorruption?.revision,
@@ -49,6 +88,13 @@ test('project repository recovers prior valid snapshot and deduplicates assets',
         ),
         assetDigestsMatch: firstDigest === secondDigest,
         assetRecordCount: await repository.database.assets.count(),
+        renamedProject: renamedProject?.name,
+        deletedProjectExists: Boolean(
+          await repository.database.projects.get('delete-me'),
+        ),
+        deletedSnapshotExists: Boolean(
+          await repository.database.snapshots.get('delete-snapshot'),
+        ),
       }
     } finally {
       repository.close()
@@ -66,6 +112,9 @@ test('project repository recovers prior valid snapshot and deduplicates assets',
     corruptSnapshotStillStored: true,
     assetDigestsMatch: true,
     assetRecordCount: 1,
+    renamedProject: 'Renamed recovery project',
+    deletedProjectExists: false,
+    deletedSnapshotExists: false,
   })
   await testInfo.attach('m3-repository-recovery', {
     body: JSON.stringify(evidence, null, 2),
@@ -231,6 +280,81 @@ test('meaningful work requests durability once and explicit save reports quota',
   const screenshotPath = testInfo.outputPath('m3-explicit-save.png')
   await page.screenshot({ fullPage: true, path: screenshotPath })
   await testInfo.attach('m3-explicit-save', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('user creates renames deletes and reopens isolated local projects', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  await expect(page.getByText('Saved locally')).toBeVisible()
+  await page.getByRole('button', { name: 'Load image' }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+  await page.getByRole('button', { name: 'Save project' }).click()
+  await expectSnapshotContains(page, 'untitled-workflow', 'load-image')
+  await expect(page.getByText('Saved locally')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Untitled workflow' }).click()
+  const browser = page.getByRole('dialog', { name: 'Project browser' })
+  await expect(browser).toBeVisible()
+  await browser.getByLabel('New project name').fill('Second project')
+  await browser.getByRole('button', { name: 'Create' }).click()
+  await browser.getByRole('button', { name: 'Open Second project' }).click()
+
+  await expect(
+    page.getByRole('button', { name: 'Second project' }),
+  ).toBeVisible()
+  await expect(page.getByText('0 nodes', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Light', exact: true }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+  await page.getByRole('button', { name: 'Save project' }).click()
+  const secondProjectId = await page.evaluate(async () => {
+    const moduleUrl = '/src/storage/projectRepository.ts'
+    const { TextureFlowDatabase } = await import(moduleUrl)
+    const database = new TextureFlowDatabase('textureflow')
+    try {
+      return (
+        await database.projects.where('name').equals('Second project').first()
+      )?.id
+    } finally {
+      database.close()
+    }
+  })
+  expect(secondProjectId).toBeTruthy()
+  await expectSnapshotContains(page, secondProjectId!, 'light')
+  await expect(page.getByText('Saved locally')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Second project' }).click()
+  const secondName = browser.getByLabel('Name for Second project', {
+    exact: true,
+  })
+  await secondName.fill('Renamed project')
+  await browser
+    .getByRole('button', { name: 'Save name for Second project' })
+    .click()
+  await expect(
+    page.getByRole('button', { name: 'Renamed project', exact: true }),
+  ).toBeVisible()
+
+  await browser.getByLabel('New project name').fill('Delete me')
+  await browser.getByRole('button', { name: 'Create' }).click()
+  await browser.getByRole('button', { name: 'Delete Delete me' }).click()
+  await expect(
+    browser.getByLabel('Name for Delete me', { exact: true }),
+  ).toBeHidden()
+
+  await browser.getByRole('button', { name: 'Open Untitled workflow' }).click()
+  await expect(
+    page.getByRole('button', { name: 'Untitled workflow', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByLabel('Load image node')).toBeVisible()
+  await expect(page.getByLabel('Light node')).toBeHidden()
+
+  const screenshotPath = testInfo.outputPath('m3-project-browser.png')
+  await page.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m3-project-browser', {
     path: screenshotPath,
     contentType: 'image/png',
   })

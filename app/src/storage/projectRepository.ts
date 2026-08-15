@@ -123,6 +123,44 @@ export class ProjectRepository {
     return this.database.projects.orderBy('modifiedAt').reverse().toArray()
   }
 
+  async renameProject(projectId: string, name: string): Promise<void> {
+    const normalizedName = name.trim()
+    if (!normalizedName || normalizedName.length > 200) {
+      throw new Error('Project name must be 1-200 characters')
+    }
+    const updated = await this.database.projects.update(projectId, {
+      name: normalizedName,
+      modifiedAt: Date.now(),
+    })
+    if (updated === 0) throw new Error(`Unknown project: ${projectId}`)
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    await this.database.transaction(
+      'rw',
+      [
+        this.database.projects,
+        this.database.snapshots,
+        this.database.projectAssets,
+        this.database.checkpoints,
+        this.database.leases,
+      ],
+      async () => {
+        await this.database.snapshots
+          .where('projectId')
+          .equals(projectId)
+          .delete()
+        await this.database.projectAssets
+          .where('projectId')
+          .equals(projectId)
+          .delete()
+        await this.database.checkpoints.delete(projectId)
+        await this.database.leases.delete(projectId)
+        await this.database.projects.delete(projectId)
+      },
+    )
+  }
+
   async saveSnapshot(
     projectId: string,
     workflowJson: string,

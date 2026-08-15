@@ -48,6 +48,10 @@ import {
   type GraphCommandMode,
 } from './components/GraphCommandDialog'
 import { IconButton } from './components/IconButton'
+import {
+  ProjectBrowserDialog,
+  type LocalProjectSummary,
+} from './components/ProjectBrowserDialog'
 import { WorkflowNode, type WorkflowFlowNode } from './components/WorkflowNode'
 import { detectEnvironment } from './app/environment'
 import {
@@ -68,7 +72,13 @@ import {
 import { useGraphStore } from './app/graphState'
 import { NODE_TYPE_REGISTRY } from './domain/graph'
 import { serializeGraphWorkflow } from './app/graphWorkflowExport'
-import { useProjectPersistence } from './app/projectPersistence'
+import {
+  createLocalProject,
+  deleteLocalProject,
+  listLocalProjects,
+  renameLocalProject,
+  useProjectPersistence,
+} from './app/projectPersistence'
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
   input: 'Inputs',
@@ -126,6 +136,12 @@ function formatStorage(bytes: number): string {
 }
 
 function App() {
+  const [activeProject, setActiveProject] = useState({
+    id: 'untitled-workflow',
+    name: 'Untitled workflow',
+  })
+  const [projectBrowserOpen, setProjectBrowserOpen] = useState(false)
+  const [localProjects, setLocalProjects] = useState<LocalProjectSummary[]>([])
   const [theme, setTheme] = useState<ThemePreference>('system')
   const [catalogQuery, setCatalogQuery] = useState('')
   const [inspectorView, setInspectorView] = useState<'inspector' | 'outline'>(
@@ -175,6 +191,8 @@ function App() {
   const projectPersistence = useProjectPersistence(
     graphDocument,
     hydrateDocument,
+    activeProject.id,
+    activeProject.name,
   )
 
   const appBarRef = useRef<HTMLElement>(null)
@@ -186,6 +204,7 @@ function App() {
   const diagnosticsCloseRef = useRef<HTMLButtonElement>(null)
   const workflowInputRef = useRef<HTMLInputElement>(null)
   const firstNodeMenuItemRef = useRef<HTMLButtonElement>(null)
+  const projectSwitcherRef = useRef<HTMLButtonElement>(null)
 
   const ThemeIcon = THEME_ICONS[theme]
   const nextThemeValue = nextTheme(theme)
@@ -512,6 +531,15 @@ function App() {
     )
   }
 
+  async function refreshLocalProjects() {
+    setLocalProjects(await listLocalProjects())
+  }
+
+  function closeProjectBrowser() {
+    setProjectBrowserOpen(false)
+    requestAnimationFrame(() => projectSwitcherRef.current?.focus())
+  }
+
   return (
     <div className="workspace" data-theme={theme}>
       <header className="app-bar" ref={appBarRef} tabIndex={-1}>
@@ -522,8 +550,16 @@ function App() {
           <span className="brand-name">TextureFlow</span>
         </div>
 
-        <button className="project-switcher" type="button">
-          <span>Untitled workflow</span>
+        <button
+          className="project-switcher"
+          onClick={() => {
+            setProjectBrowserOpen(true)
+            void refreshLocalProjects()
+          }}
+          ref={projectSwitcherRef}
+          type="button"
+        >
+          <span>{activeProject.name}</span>
           <ChevronDown aria-hidden="true" size={14} />
         </button>
 
@@ -1176,6 +1212,33 @@ function App() {
             Delete
           </button>
         </div>
+      ) : null}
+      {projectBrowserOpen ? (
+        <ProjectBrowserDialog
+          activeProjectId={activeProject.id}
+          onClose={closeProjectBrowser}
+          onCreate={async (name) => {
+            await createLocalProject(name)
+            await refreshLocalProjects()
+          }}
+          onDelete={async (projectId) => {
+            await deleteLocalProject(projectId)
+            await refreshLocalProjects()
+          }}
+          onOpen={(project) => {
+            setActiveProject({ id: project.id, name: project.name })
+            setSelectedTemplate(null)
+            closeProjectBrowser()
+          }}
+          onRename={async (projectId, name) => {
+            await renameLocalProject(projectId, name)
+            if (projectId === activeProject.id) {
+              setActiveProject((current) => ({ ...current, name: name.trim() }))
+            }
+            await refreshLocalProjects()
+          }}
+          projects={localProjects}
+        />
       ) : null}
     </div>
   )

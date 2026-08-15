@@ -919,6 +919,76 @@
   outline: 1px solid var(--accent);
 }
 
+.project-browser-dialog {
+  width: min(620px, 100%);
+}
+
+.new-project-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.new-project-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.new-project-form input,
+.project-row input {
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  font: inherit;
+}
+
+.new-project-form .primary-command {
+  width: auto;
+  min-width: 96px;
+  margin: 0;
+}
+
+.project-list {
+  display: grid;
+  max-height: min(420px, 60vh);
+  overflow: auto;
+  padding: 8px 18px 16px;
+}
+
+.project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-row > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.project-row span {
+  color: var(--text-2);
+  font-size: 9px;
+}
+
+.project-row-actions {
+  display: flex;
+  gap: 4px;
+}
+
 .status-item.good {
   color: var(--success);
 }
