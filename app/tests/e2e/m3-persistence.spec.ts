@@ -122,6 +122,253 @@ test('project repository recovers prior valid snapshot and deduplicates assets',
   })
 })
 
+test('repository verifies checkpoints reclaims previews and arbitrates expiring leases', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  const evidence = await page.evaluate(async () => {
+    const moduleUrl = '/src/storage/projectRepository.ts'
+    const { ProjectRepository, TextureFlowDatabase } = await import(moduleUrl)
+    const databaseName = `textureflow-recovery-${crypto.randomUUID()}`
+    const repository = new ProjectRepository(
+      new TextureFlowDatabase(databaseName),
+    )
+    try {
+      await repository.createProject('project-1', 'Recovery controls')
+      await repository.saveCheckpoint('project-1', '{"draft":1}', 1)
+      const validCheckpoint = await repository.loadCheckpoint('project-1')
+      await repository.database.checkpoints.update('project-1', {
+        workflowJson: new Blob(['{"draft":"corrupt"}']),
+      })
+      const corruptCheckpoint = await repository.loadCheckpoint('project-1')
+
+      await repository.putPreview({
+        hash: 'preview-a',
+        projectId: 'project-1',
+        blob: new Blob([new Uint8Array(32)]),
+        byteLength: 32,
+        lastAccessedAt: 1,
+      })
+      await repository.putPreview({
+        hash: 'preview-b',
+        projectId: 'project-1',
+        blob: new Blob([new Uint8Array(64)]),
+        byteLength: 64,
+        lastAccessedAt: 2,
+      })
+      const reclaimedBytes = await repository.reclaimPreviews('project-1')
+
+      const firstClaim = await repository.claimLease(
+        'project-1',
+        'tab-a',
+        1000,
+        6000,
+      )
+      const conflictingClaim = await repository.claimLease(
+        'project-1',
+        'tab-b',
+        2000,
+        6000,
+      )
+      const expiredClaim = await repository.claimLease(
+        'project-1',
+        'tab-b',
+        8000,
+        6000,
+      )
+      const oldTokenRenewed = firstClaim.acquired
+        ? await repository.renewLease(
+            'project-1',
+            firstClaim.lease.token,
+            1,
+            8100,
+          )
+        : null
+      let oldTokenSaveRejected = false
+      if (firstClaim.acquired) {
+        try {
+          await repository.saveSnapshot(
+            'project-1',
+            '{"stale":true}',
+            'stale-snapshot',
+            firstClaim.lease.token,
+          )
+        } catch {
+          oldTokenSaveRejected = true
+        }
+      }
+      const newTokenReleased = expiredClaim.acquired
+        ? await repository.releaseLease('project-1', expiredClaim.lease.token)
+        : null
+
+      return {
+        validCheckpointRevision: validCheckpoint?.revision,
+        corruptCheckpointRejected: corruptCheckpoint === null,
+        corruptCheckpointRetained: Boolean(
+          await repository.database.checkpoints.get('project-1'),
+        ),
+        reclaimedBytes,
+        remainingPreviews: await repository.database.previews.count(),
+        firstClaimed: firstClaim.acquired,
+        conflictRejected: !conflictingClaim.acquired,
+        expiredClaimedByTabB:
+          expiredClaim.acquired && expiredClaim.lease.tabId === 'tab-b',
+        oldTokenRenewed,
+        oldTokenSaveRejected,
+        newTokenReleased,
+      }
+    } finally {
+      repository.close()
+      await repository.database.delete()
+    }
+  })
+
+  expect(evidence).toEqual({
+    validCheckpointRevision: 1,
+    corruptCheckpointRejected: true,
+    corruptCheckpointRetained: true,
+    reclaimedBytes: 96,
+    remainingPreviews: 0,
+    firstClaimed: true,
+    conflictRejected: true,
+    expiredClaimedByTabB: true,
+    oldTokenRenewed: false,
+    oldTokenSaveRejected: true,
+    newTokenReleased: true,
+  })
+  await testInfo.attach('m3-recovery-lease-evidence', {
+    body: JSON.stringify(evidence, null, 2),
+    contentType: 'application/json',
+  })
+})
+
+test('pagehide checkpoint restores newer draft and quota retry reclaims previews', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  await expect(page.getByText('Saved locally')).toBeVisible()
+  await page.getByRole('button', { name: 'Load image' }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+  await page.evaluate(() =>
+    window.dispatchEvent(new PageTransitionEvent('pagehide')),
+  )
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const moduleUrl = '/src/storage/projectRepository.ts'
+        const { TextureFlowDatabase } = await import(moduleUrl)
+        const database = new TextureFlowDatabase('textureflow')
+        try {
+          const checkpoint = await database.checkpoints.get('untitled-workflow')
+          return checkpoint
+            ? (await checkpoint.workflowJson.text()).includes('load-image')
+            : false
+        } finally {
+          database.close()
+        }
+      }),
+    )
+    .toBe(true)
+
+  const quotaEvidence = await page.evaluate(async () => {
+    const moduleUrl = '/src/storage/projectRepository.ts'
+    const { ProjectRepository, TextureFlowDatabase } = await import(moduleUrl)
+    const quotaDatabaseName = `textureflow-quota-${crypto.randomUUID()}`
+    const quotaRepository = new ProjectRepository(
+      new TextureFlowDatabase(quotaDatabaseName),
+    )
+    try {
+      await quotaRepository.createProject('quota-project', 'Quota project')
+      await quotaRepository.putPreview({
+        hash: 'reclaimable',
+        projectId: 'quota-project',
+        blob: new Blob([new Uint8Array(128)]),
+        byteLength: 128,
+        lastAccessedAt: 1,
+      })
+      const originalSave = quotaRepository.saveSnapshot.bind(quotaRepository)
+      let attempts = 0
+      quotaRepository.saveSnapshot = async (...arguments_) => {
+        attempts += 1
+        if (attempts === 1) {
+          throw new DOMException('Injected quota', 'QuotaExceededError')
+        }
+        return originalSave(...arguments_)
+      }
+      const result = await quotaRepository.saveSnapshotWithQuotaRecovery(
+        'quota-project',
+        '{"quota":true}',
+        'quota-snapshot',
+      )
+
+      const mainRepository = new ProjectRepository(
+        new TextureFlowDatabase('textureflow'),
+      )
+      try {
+        const project =
+          await mainRepository.database.projects.get('untitled-workflow')
+        const current = project?.currentSnapshotId
+          ? await mainRepository.database.snapshots.get(
+              project.currentSnapshotId,
+            )
+          : null
+        const checkpoint =
+          await mainRepository.loadCheckpoint('untitled-workflow')
+        const baseWorkflow = checkpoint?.workflowJson ?? current?.workflowJson
+        if (!project || !baseWorkflow) {
+          throw new Error('Project has no verified recovery state')
+        }
+        const workflow = JSON.parse(await baseWorkflow.text()) as {
+          nodes: unknown[]
+        }
+        workflow.nodes.push({
+          id: 'checkpoint-light',
+          type: 'light',
+          label: 'Light',
+          position: { x: 380, y: 100 },
+          size: { width: 240, height: 128 },
+          zIndex: 1,
+          bypassed: false,
+          muted: false,
+          locked: false,
+        })
+        await mainRepository.saveCheckpoint(
+          'untitled-workflow',
+          JSON.stringify(workflow),
+          Math.max(project.revision, checkpoint?.revision ?? 0) + 1,
+        )
+      } finally {
+        mainRepository.close()
+      }
+
+      return {
+        attempts,
+        reclaimedBytes: result.reclaimedBytes,
+        previewCount: await quotaRepository.database.previews.count(),
+        savedRevision: result.snapshot.revision,
+      }
+    } finally {
+      quotaRepository.close()
+      await quotaRepository.database.delete()
+    }
+  })
+  expect(quotaEvidence).toEqual({
+    attempts: 2,
+    reclaimedBytes: 128,
+    previewCount: 0,
+    savedRevision: 1,
+  })
+
+  await page.reload()
+  await expect(page.getByText('Recovered prior snapshot')).toBeVisible()
+  await expect(page.getByLabel('Load image node')).toBeVisible()
+  await expect(page.getByLabel('Light node')).toBeVisible()
+  await testInfo.attach('m3-checkpoint-quota-evidence', {
+    body: JSON.stringify(quotaEvidence, null, 2),
+    contentType: 'application/json',
+  })
+})
+
 test('user graph autosaves locally and restores after reload', async ({
   page,
 }, testInfo) => {
@@ -355,6 +602,48 @@ test('user creates renames deletes and reopens isolated local projects', async (
   const screenshotPath = testInfo.outputPath('m3-project-browser.png')
   await page.screenshot({ fullPage: true, path: screenshotPath })
   await testInfo.attach('m3-project-browser', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('second tab opens read-only and takes over after owner closes', async ({
+  context,
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Save project' })).toBeEnabled()
+
+  const secondPage = await context.newPage()
+  await secondPage.goto('/')
+  await expect(secondPage.getByText('Read-only in another tab')).toBeVisible()
+  await secondPage.getByRole('button', { name: 'Light', exact: true }).click()
+  await expect(
+    secondPage.getByRole('button', { name: 'Add to canvas' }),
+  ).toBeDisabled()
+  await expect(
+    secondPage.getByRole('button', { name: 'Save project' }),
+  ).toBeDisabled()
+  const takeOver = secondPage.getByRole('button', {
+    name: 'Read-only · Take over',
+  })
+  await expect(takeOver).toBeVisible()
+
+  await page.close()
+  await takeOver.click()
+  await expect(
+    secondPage.getByRole('button', { name: 'Add to canvas' }),
+  ).toBeEnabled({ timeout: 10000 })
+  await expect(takeOver).toBeHidden()
+
+  await secondPage.getByRole('button', { name: 'Light', exact: true }).click()
+  await secondPage.getByRole('button', { name: 'Add to canvas' }).click()
+  await secondPage.getByRole('button', { name: 'Save project' }).click()
+  await expectSnapshotContains(secondPage, 'untitled-workflow', 'light')
+
+  const screenshotPath = testInfo.outputPath('m3-read-only-takeover.png')
+  await secondPage.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m3-read-only-takeover', {
     path: screenshotPath,
     contentType: 'image/png',
   })

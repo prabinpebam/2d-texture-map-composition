@@ -425,6 +425,7 @@ test('keyboard user can add connect and size nodes without dragging', async ({
 }, testInfo) => {
   await page.goto('/')
   const graph = page.getByRole('main', { name: 'Graph canvas' })
+  await expect(page.getByRole('button', { name: 'Save project' })).toBeEnabled()
   await graph.focus()
 
   await page.keyboard.press('Shift+A')

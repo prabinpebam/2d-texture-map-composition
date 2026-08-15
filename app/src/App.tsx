@@ -216,7 +216,7 @@ function App() {
       type: 'workflow',
       position: node.position,
       selected: selectedNodeIds.includes(node.id),
-      draggable: !node.locked,
+      draggable: !node.locked && projectPersistence.access === 'writer',
       ariaLabel: `${node.label} node`,
       data: {
         label: node.label,
@@ -303,7 +303,12 @@ function App() {
       }
 
       const step = event.shiftKey ? 10 : 1
-      if (event.shiftKey && event.key === 'F10' && selectedNodeIds.length > 0) {
+      if (
+        event.shiftKey &&
+        event.key === 'F10' &&
+        selectedNodeIds.length > 0 &&
+        projectPersistence.access === 'writer'
+      ) {
         event.preventDefault()
         event.stopPropagation()
         setNodeMenuOpen(true)
@@ -329,6 +334,13 @@ function App() {
         }
         return
       }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        clearSelection()
+        return
+      }
+      if (projectPersistence.access !== 'writer') return
       if (event.altKey && event.key.startsWith('Arrow')) {
         event.preventDefault()
         event.stopPropagation()
@@ -353,12 +365,6 @@ function App() {
         event.preventDefault()
         event.stopPropagation()
         deleteSelected()
-        return
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        event.stopPropagation()
-        clearSelection()
         return
       }
       if (event.ctrlKey && !event.shiftKey) {
@@ -407,6 +413,7 @@ function App() {
     deleteSelected,
     graphDocument.nodes,
     moveSelectedBy,
+    projectPersistence.access,
     selectNode,
     selectedNodeIds.length,
     toggleSelectedState,
@@ -565,15 +572,17 @@ function App() {
 
         <div className="save-state" role="status">
           <span className="status-dot" aria-hidden="true" />
-          {projectPersistence.status === 'loading'
-            ? 'Opening local project'
-            : projectPersistence.status === 'saving'
-              ? 'Saving locally'
-              : projectPersistence.status === 'saved'
-                ? 'Saved locally'
-                : projectPersistence.status === 'recovered'
-                  ? 'Recovered prior snapshot'
-                  : 'Unsaved changes'}
+          {projectPersistence.access === 'read-only'
+            ? 'Read-only in another tab'
+            : projectPersistence.status === 'loading'
+              ? 'Opening local project'
+              : projectPersistence.status === 'saving'
+                ? 'Saving locally'
+                : projectPersistence.status === 'saved'
+                  ? 'Saved locally'
+                  : projectPersistence.status === 'recovered'
+                    ? 'Recovered prior snapshot'
+                    : 'Unsaved changes'}
         </div>
 
         <div
@@ -582,21 +591,28 @@ function App() {
           aria-label="Project commands"
         >
           <IconButton
-            disabled={undoStack.length === 0}
+            disabled={
+              undoStack.length === 0 || projectPersistence.access !== 'writer'
+            }
             label="Undo"
             onClick={undo}
           >
             <Undo2 aria-hidden="true" size={17} />
           </IconButton>
           <IconButton
-            disabled={redoStack.length === 0}
+            disabled={
+              redoStack.length === 0 || projectPersistence.access !== 'writer'
+            }
             label="Redo"
             onClick={redo}
           >
             <Redo2 aria-hidden="true" size={17} />
           </IconButton>
           <IconButton
-            disabled={projectPersistence.status === 'loading'}
+            disabled={
+              projectPersistence.status === 'loading' ||
+              projectPersistence.access !== 'writer'
+            }
             label="Save project"
             onClick={() => void projectPersistence.saveNow()}
           >
@@ -604,6 +620,7 @@ function App() {
           </IconButton>
           <span className="toolbar-separator" aria-hidden="true" />
           <IconButton
+            disabled={projectPersistence.access !== 'writer'}
             label="Import workflow"
             onClick={() => workflowInputRef.current?.click()}
           >
@@ -630,35 +647,50 @@ function App() {
             <Download aria-hidden="true" size={17} />
           </IconButton>
           <IconButton
-            disabled={selectedNodeIds.length === 0}
+            disabled={
+              selectedNodeIds.length === 0 ||
+              projectPersistence.access !== 'writer'
+            }
             label="Delete selected nodes"
             onClick={deleteSelected}
           >
             <Trash2 aria-hidden="true" size={17} />
           </IconButton>
           <IconButton
-            disabled={selectedNodeIds.length === 0}
+            disabled={
+              selectedNodeIds.length === 0 ||
+              projectPersistence.access !== 'writer'
+            }
             label="Duplicate selected nodes"
             onClick={() => duplicateSelected()}
           >
             <Copy aria-hidden="true" size={17} />
           </IconButton>
           <IconButton
-            disabled={selectedNodeIds.length === 0}
+            disabled={
+              selectedNodeIds.length === 0 ||
+              projectPersistence.access !== 'writer'
+            }
             label="Toggle bypass for selected nodes"
             onClick={() => toggleSelectedState('bypassed')}
           >
             <CircleSlash2 aria-hidden="true" size={17} />
           </IconButton>
           <IconButton
-            disabled={selectedNodeIds.length === 0}
+            disabled={
+              selectedNodeIds.length === 0 ||
+              projectPersistence.access !== 'writer'
+            }
             label="Toggle mute for selected nodes"
             onClick={() => toggleSelectedState('muted')}
           >
             <VolumeX aria-hidden="true" size={17} />
           </IconButton>
           <IconButton
-            disabled={selectedNodeIds.length === 0}
+            disabled={
+              selectedNodeIds.length === 0 ||
+              projectPersistence.access !== 'writer'
+            }
             label="Toggle lock for selected nodes"
             onClick={() => toggleSelectedState('locked')}
           >
@@ -779,6 +811,7 @@ function App() {
               nodeTypes={NODE_TYPES}
               nodes={flowNodes}
               onConnect={(connection) => {
+                if (projectPersistence.access !== 'writer') return
                 if (
                   !connection.source ||
                   !connection.target ||
@@ -795,7 +828,11 @@ function App() {
                 })
               }}
               onNodeClick={(event, node) => selectNode(node.id, event.shiftKey)}
-              onNodeDragStop={(_, node) => moveNode(node.id, node.position)}
+              onNodeDragStop={(_, node) => {
+                if (projectPersistence.access === 'writer') {
+                  moveNode(node.id, node.position)
+                }
+              }}
               onPaneClick={clearSelection}
             >
               <NodeInternalsSync
@@ -929,6 +966,7 @@ function App() {
 
               <button
                 className="primary-command"
+                disabled={projectPersistence.access !== 'writer'}
                 onClick={() => {
                   const nodeCount = graphDocument.nodes.length
                   addNode(selectedTemplate.id, {
@@ -1005,6 +1043,15 @@ function App() {
           </span>
         </div>
         <div className="status-group">
+          {projectPersistence.access === 'read-only' ? (
+            <button
+              className="status-item status-action connection-warning"
+              onClick={() => void projectPersistence.takeOver()}
+              type="button"
+            >
+              Read-only · Take over
+            </button>
+          ) : null}
           {workflowNotice ? (
             <span className="status-item" role="status">
               {workflowNotice}

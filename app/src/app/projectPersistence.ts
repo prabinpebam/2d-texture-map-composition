@@ -18,10 +18,21 @@ export type ProjectSaveStatus =
 
 export interface ProjectPersistenceState {
   status: ProjectSaveStatus
+  access: 'claiming' | 'writer' | 'read-only'
+  foreignTabId: string | null
   durability: 'checking' | 'persistent' | 'best-effort'
   usageBytes: number | null
   quotaBytes: number | null
   saveNow(): Promise<void>
+  takeOver(): Promise<void>
+}
+
+function getTabId(): string {
+  const existing = sessionStorage.getItem('textureflow-tab-id')
+  if (existing) return existing
+  const tabId = crypto.randomUUID()
+  sessionStorage.setItem('textureflow-tab-id', tabId)
+  return tabId
 }
 
 function serialize(
@@ -41,17 +52,26 @@ async function initializeProject(projectId: string, projectName: string) {
   if (!existing) {
     await repository.createProject(projectId, projectName)
   }
-  const loaded = await repository.loadProject(projectId)
-  if (!loaded) {
+  const [loaded, checkpoint] = await Promise.all([
+    repository.loadProject(projectId),
+    repository.loadCheckpoint(projectId),
+  ])
+  const useCheckpoint = Boolean(
+    checkpoint && (!loaded || checkpoint.revision > loaded.snapshot.revision),
+  )
+  const workflowJson = useCheckpoint
+    ? await checkpoint!.workflowJson.text()
+    : loaded?.workflowJson
+  if (!workflowJson) {
     return { document: null, workflowJson: null, recovered: false }
   }
   const { parseGraphWorkflow } = await import('./graphWorkflowBoundary')
-  const parsed = parseGraphWorkflow(loaded.workflowJson)
+  const parsed = parseGraphWorkflow(workflowJson)
   if (!parsed.ok) throw new Error(parsed.error)
   return {
     document: parsed.document,
-    workflowJson: loaded.workflowJson,
-    recovered: loaded.recoveredFromPriorSnapshot,
+    workflowJson,
+    recovered: useCheckpoint || Boolean(loaded?.recoveredFromPriorSnapshot),
   }
 }
 
@@ -71,12 +91,27 @@ export function useProjectPersistence(
     usageBytes: number | null
     quotaBytes: number | null
   }>({ usageBytes: null, quotaBytes: null })
+  const [leaseState, setLeaseState] = useState<{
+    projectId: string
+    access: ProjectPersistenceState['access']
+    token: string | null
+    foreignTabId: string | null
+  }>({ projectId: '', access: 'claiming', token: null, foreignTabId: null })
+  const [leaseAttempt, setLeaseAttempt] = useState(0)
   const lastSavedJson = useRef<string | null>(null)
   const saveQueue = useRef(Promise.resolve())
   const persistenceRequestedFor = useRef<string | null>(null)
   const ready = readyProjectId === projectId
   const durability =
     durabilityState.projectId === projectId ? durabilityState.value : 'checking'
+  const access =
+    leaseState.projectId === projectId ? leaseState.access : 'claiming'
+  const leaseToken =
+    leaseState.projectId === projectId ? leaseState.token : null
+  const latestDocument = useRef(document)
+  useEffect(() => {
+    latestDocument.current = document
+  }, [document])
 
   const refreshStorageEstimate = useCallback(async () => {
     const estimate = await navigator.storage?.estimate?.()
@@ -88,9 +123,17 @@ export function useProjectPersistence(
 
   const persistWorkflow = useCallback(
     (workflowJson: string): Promise<void> => {
+      if (access !== 'writer' || !leaseToken) {
+        return Promise.reject(new Error('Project is open read-only'))
+      }
       setStatus('saving')
       const operation = saveQueue.current.then(async () => {
-        await repository.saveSnapshot(projectId, workflowJson)
+        await repository.saveSnapshotWithQuotaRecovery(
+          projectId,
+          workflowJson,
+          undefined,
+          leaseToken,
+        )
         lastSavedJson.current = workflowJson
         await refreshStorageEstimate()
         setStatus('saved')
@@ -98,7 +141,7 @@ export function useProjectPersistence(
       saveQueue.current = operation.catch(() => setStatus('error'))
       return operation
     },
-    [projectId, refreshStorageEstimate],
+    [access, leaseToken, projectId, refreshStorageEstimate],
   )
 
   useEffect(() => {
@@ -139,6 +182,78 @@ export function useProjectPersistence(
 
   useEffect(() => {
     if (!ready) return
+    let active = true
+    let ownedToken: string | null = null
+    let renewalTimer = 0
+    const tabId = getTabId()
+
+    void repository
+      .claimLease(projectId, tabId)
+      .then((result) => {
+        if (!active) {
+          if (result.acquired) {
+            void repository.releaseLease(projectId, result.lease.token)
+          }
+          return
+        }
+        if (!result.acquired) {
+          setLeaseState({
+            projectId,
+            access: 'read-only',
+            token: null,
+            foreignTabId: result.lease.tabId,
+          })
+          return
+        }
+        ownedToken = result.lease.token
+        setLeaseState({
+          projectId,
+          access: 'writer',
+          token: ownedToken,
+          foreignTabId: null,
+        })
+        renewalTimer = window.setInterval(() => {
+          void repository.database.projects
+            .get(projectId)
+            .then((project) =>
+              repository.renewLease(
+                projectId,
+                ownedToken!,
+                project?.revision ?? 0,
+              ),
+            )
+            .then((renewed) => {
+              if (!renewed && active) {
+                setLeaseState({
+                  projectId,
+                  access: 'read-only',
+                  token: null,
+                  foreignTabId: 'another tab',
+                })
+              }
+            })
+        }, 2000)
+      })
+      .catch(() => {
+        if (active) {
+          setLeaseState({
+            projectId,
+            access: 'read-only',
+            token: null,
+            foreignTabId: 'unknown',
+          })
+        }
+      })
+
+    return () => {
+      active = false
+      window.clearInterval(renewalTimer)
+      if (ownedToken) void repository.releaseLease(projectId, ownedToken)
+    }
+  }, [leaseAttempt, projectId, ready])
+
+  useEffect(() => {
+    if (!ready || access !== 'writer') return
     const workflowJson = serialize(document, projectId, projectName)
     if (workflowJson === lastSavedJson.current) return
 
@@ -146,7 +261,7 @@ export function useProjectPersistence(
       void persistWorkflow(workflowJson)
     }, 500)
     return () => window.clearTimeout(timeout)
-  }, [document, persistWorkflow, projectId, projectName, ready])
+  }, [access, document, persistWorkflow, projectId, projectName, ready])
 
   useEffect(() => {
     if (
@@ -167,13 +282,73 @@ export function useProjectPersistence(
       )
       .catch(() => setDurabilityState({ projectId, value: 'best-effort' }))
   }, [document.nodes.length, projectId, ready])
+  useEffect(() => {
+    if (!ready || access !== 'writer') return
+    function checkpoint() {
+      const workflowJson = serialize(
+        latestDocument.current,
+        projectId,
+        projectName,
+      )
+      void repository.database.projects
+        .get(projectId)
+        .then((project) =>
+          repository.saveCheckpoint(
+            projectId,
+            workflowJson,
+            (project?.revision ?? 0) + 1,
+          ),
+        )
+        .catch(() => undefined)
+    }
+    function checkpointWhenHidden() {
+      if (globalThis.document.visibilityState === 'hidden') checkpoint()
+    }
+    window.addEventListener('pagehide', checkpoint)
+    globalThis.document.addEventListener(
+      'visibilitychange',
+      checkpointWhenHidden,
+    )
+    return () => {
+      window.removeEventListener('pagehide', checkpoint)
+      globalThis.document.removeEventListener(
+        'visibilitychange',
+        checkpointWhenHidden,
+      )
+    }
+  }, [access, projectId, projectName, ready])
+
+  async function takeOver() {
+    if (access !== 'read-only') return
+    const channel = new BroadcastChannel('textureflow-leases')
+    channel.postMessage({ type: 'takeover-intent', projectId })
+    channel.close()
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 2100))
+      const result = await repository.claimLease(projectId, getTabId())
+      if (result.acquired) {
+        setLeaseState({
+          projectId,
+          access: 'writer',
+          token: result.lease.token,
+          foreignTabId: null,
+        })
+        setLeaseAttempt((currentAttempt) => currentAttempt + 1)
+        return
+      }
+    }
+  }
 
   return {
     status: ready ? status : 'loading',
+    access,
+    foreignTabId:
+      leaseState.projectId === projectId ? leaseState.foreignTabId : null,
     durability,
     usageBytes: storageEstimate.usageBytes,
     quotaBytes: storageEstimate.quotaBytes,
     saveNow: () => persistWorkflow(serialize(document, projectId, projectName)),
+    takeOver,
   }
 }
 

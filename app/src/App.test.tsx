@@ -1,8 +1,25 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import axe from 'axe-core'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { graphStore } from './app/graphState'
+
+vi.mock('./app/projectPersistence', () => ({
+  createLocalProject: vi.fn(),
+  deleteLocalProject: vi.fn(),
+  listLocalProjects: vi.fn(async () => []),
+  renameLocalProject: vi.fn(),
+  useProjectPersistence: () => ({
+    status: 'saved',
+    access: 'writer',
+    foreignTabId: null,
+    durability: 'best-effort',
+    usageBytes: null,
+    quotaBytes: null,
+    saveNow: vi.fn(async () => undefined),
+    takeOver: vi.fn(async () => undefined),
+  }),
+}))
 
 beforeEach(() => {
   graphStore.setState({
