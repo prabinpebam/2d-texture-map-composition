@@ -1,5 +1,8 @@
-# 2D texture map composition
+*** MANUALLY WRITTEN HUMAN GENERATED TEXT, KEEP AS ORIGINAL REFERENCE, DO NOT EDIT ***
 
+# 2D texture map composition web app
+
+## Product spec
 - I got a bunch of images texture maps.
     - base color
     - normal
@@ -57,9 +60,46 @@
         - can preview masks
         - Download image as tiff, png, jpg
     - Custom hsl color picker for all color picking needs. Make the Design exactly similar to how the color picker is in Figma.
-- Tech stack
-    - React flow web app 
+    - Reactflow: Node UI
+        - Support light and dark mode
+        - Minimap navigation
+        - Saving files in indexdb
+        - save workflow as json
+            - Workflows include node size and position
+            - Workflows should have all data to exactly recreate the workflow snapshot.
+        - workflows jsons are embedded in downloaded pngs
+        - All nodes supports
+            - Bypass (ctrl + b)
+            - mute (ctrl + m)
+            - locking (ctrl + l)
+            - Resizing
+        - Node snapshot like states, position, size, layering, values etc are all remembered instantly and also saved in the json
+        - All standard controls for node UI
+            - Shortcuts and toolbar controls for zoom
+            - zoom to fit, zoom to selection etc.
+            - standard pan controls
 
+
+## Tech stack
+    - React flow web app
+
+## Execution approach
+
+- Refer this seed spec and make a complete detailing plan to spec this out and detailed every aspect of this to create an implementation ready spec and implementation plan.
+- Do not confuse between detailing plan and implementation plan
+- Detailing plan is the plan to spec out the app and the implementation plan
+- What research is needed? Do deep research on all relevant topics.
+- What agent skills should be used to improve the quality of work and output?
+- Scalable robust design system
+- What technical consideration should be made
+- What're the best industry practices
+- What to watch out for
+- Security, privacy concerns
+- Performance consideration
+- Edge cases and loop holes to be avoided
+
+### Agent graph and loop
+- Execution and implementation by graph and loop method described here agent-graph-loop.md
 
 
     
