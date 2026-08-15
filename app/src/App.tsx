@@ -102,6 +102,9 @@ function App() {
   const selectedNodeIds = useGraphStore((state) => state.selectedNodeIds)
   const undoStack = useGraphStore((state) => state.undoStack)
   const redoStack = useGraphStore((state) => state.redoStack)
+  const connectionDiagnostic = useGraphStore(
+    (state) => state.connectionDiagnostic,
+  )
   const addNode = useGraphStore((state) => state.addNode)
   const selectNode = useGraphStore((state) => state.selectNode)
   const clearSelection = useGraphStore((state) => state.clearSelection)
@@ -112,6 +115,7 @@ function App() {
   const toggleSelectedState = useGraphStore(
     (state) => state.toggleSelectedState,
   )
+  const connectNodes = useGraphStore((state) => state.connectNodes)
   const undo = useGraphStore((state) => state.undo)
   const redo = useGraphStore((state) => state.redo)
 
@@ -149,6 +153,14 @@ function App() {
   const selectedNode = graphDocument.nodes.find((node) =>
     selectedNodeIds.includes(node.id),
   )
+  const flowEdges = graphDocument.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.sourceNodeId,
+    sourceHandle: edge.sourcePortId,
+    target: edge.targetNodeId,
+    targetHandle: edge.targetPortId,
+    type: 'smoothstep',
+  }))
 
   useEffect(() => {
     function handleRegionNavigation(event: globalThis.KeyboardEvent) {
@@ -448,13 +460,29 @@ function App() {
         >
           <ReactFlow
             colorMode={theme}
-            edges={[]}
+            edges={flowEdges}
             fitView
             fitViewOptions={{ maxZoom: 1 }}
             maxZoom={2.5}
             minZoom={0.2}
             nodeTypes={NODE_TYPES}
             nodes={flowNodes}
+            onConnect={(connection) => {
+              if (
+                !connection.source ||
+                !connection.target ||
+                !connection.sourceHandle ||
+                !connection.targetHandle
+              ) {
+                return
+              }
+              connectNodes({
+                sourceNodeId: connection.source,
+                sourcePortId: connection.sourceHandle,
+                targetNodeId: connection.target,
+                targetPortId: connection.targetHandle,
+              })
+            }}
             onNodeClick={(event, node) => selectNode(node.id, event.shiftKey)}
             onNodeDragStop={(_, node) => moveNode(node.id, node.position)}
             onPaneClick={clearSelection}
@@ -606,6 +634,11 @@ function App() {
           </span>
         </div>
         <div className="status-group">
+          {connectionDiagnostic ? (
+            <span className="status-item connection-warning" role="status">
+              Connection rejected: {connectionDiagnostic.replaceAll('-', ' ')}
+            </span>
+          ) : null}
           <span className="status-item">
             <Map aria-hidden="true" size={13} />
             {graphDocument.nodes.length} nodes

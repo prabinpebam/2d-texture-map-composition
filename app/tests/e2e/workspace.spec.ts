@@ -308,3 +308,55 @@ test('keyboard user can move lock and duplicate a node', async ({
     contentType: 'image/png',
   })
 })
+
+test('user can connect compatible ports and sees invalid type feedback', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Load image' }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+  await page.getByRole('button', { name: 'Material' }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+
+  const sourceNode = page.getByLabel('Load image node')
+  const materialNode = page.getByLabel('Material node')
+  const imageOutput = sourceNode.getByLabel('Image output')
+  await imageOutput.dragTo(materialNode.getByLabel('Lights input'))
+  const edges = page.locator('.react-flow__edge')
+  await expect(edges).toHaveCount(0)
+  await expect(
+    page.getByText('Connection rejected: incompatible type'),
+  ).toBeVisible()
+
+  await imageOutput.dragTo(materialNode.getByLabel('Base color input'))
+  await expect(edges).toHaveCount(1)
+  const edgePaint = await edges
+    .locator('.react-flow__edge-path')
+    .evaluate((element) => {
+      const path = element as SVGPathElement
+      const style = getComputedStyle(path)
+      return {
+        data: path.getAttribute('d'),
+        length: path.getTotalLength(),
+        stroke: style.stroke,
+        opacity: Number(style.opacity),
+        visibility: style.visibility,
+      }
+    })
+  expect(edgePaint.data).toMatch(/^M/)
+  expect(edgePaint.length).toBeGreaterThan(0)
+  expect(edgePaint.stroke).not.toBe('none')
+  expect(edgePaint.opacity).toBeGreaterThan(0)
+  expect(edgePaint.visibility).toBe('visible')
+  await expect(edges).toHaveCount(1)
+  await expect(
+    page.getByText('Connection rejected: incompatible type'),
+  ).toBeHidden()
+
+  const screenshotPath = testInfo.outputPath('m2-typed-connections.png')
+  await page.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m2-typed-connections', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})

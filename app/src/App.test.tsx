@@ -10,6 +10,7 @@ beforeEach(() => {
     selectedNodeIds: [],
     undoStack: [],
     redoStack: [],
+    connectionDiagnostic: null,
   })
 })
 

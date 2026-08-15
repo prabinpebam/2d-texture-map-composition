@@ -758,6 +758,15 @@
   color: var(--success);
 }
 
+.connection-warning {
+  color: var(--warning);
+}
+
+.react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+}
+
 .zoom-readout {
   min-width: 48px;
   justify-content: flex-end;

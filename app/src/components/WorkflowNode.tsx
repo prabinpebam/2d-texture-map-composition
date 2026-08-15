@@ -35,6 +35,7 @@ export function WorkflowNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
           {data.inputs.map((port, index) => (
             <span className="workflow-node-port" key={port.id}>
               <Handle
+                aria-label={`${port.label} input`}
                 id={port.id}
                 position={Position.Left}
                 style={{ top: 76 + index * 24 }}
@@ -49,6 +50,7 @@ export function WorkflowNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
             <span className="workflow-node-port" key={port.id}>
               {port.label}
               <Handle
+                aria-label={`${port.label} output`}
                 id={port.id}
                 position={Position.Right}
                 style={{ top: 76 + index * 24 }}

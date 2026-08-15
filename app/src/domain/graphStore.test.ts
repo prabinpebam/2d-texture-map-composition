@@ -85,4 +85,37 @@ describe('graph command store', () => {
     expect(store.getState().document.nodes).toHaveLength(1)
     expect(store.getState().undoStack).toHaveLength(historyLength)
   })
+
+  it('creates validated edges and exposes rejections without authored mutation', () => {
+    const store = createGraphStore()
+    store.getState().addNode('load-image', { x: 0, y: 0 }, 'source')
+    store.getState().addNode('preview', { x: 300, y: 0 }, 'preview')
+    expect(
+      store.getState().connectNodes(
+        {
+          sourceNodeId: 'source',
+          sourcePortId: 'image',
+          targetNodeId: 'preview',
+          targetPortId: 'image',
+        },
+        'edge-valid',
+      ),
+    ).toBeNull()
+    expect(store.getState().document.edges).toHaveLength(1)
+
+    const before = store.getState().document
+    expect(
+      store.getState().connectNodes(
+        {
+          sourceNodeId: 'source',
+          sourcePortId: 'image',
+          targetNodeId: 'preview',
+          targetPortId: 'image',
+        },
+        'edge-invalid',
+      ),
+    ).toBe('duplicate-edge')
+    expect(store.getState().document).toBe(before)
+    expect(store.getState().connectionDiagnostic).toBe('duplicate-edge')
+  })
 })

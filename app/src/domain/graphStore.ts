@@ -1,11 +1,18 @@
 import { createStore } from 'zustand/vanilla'
-import { createGraphNode, type GraphDocument } from './graph'
+import {
+  connectGraph,
+  createGraphNode,
+  type ConnectionDiagnostic,
+  type GraphDocument,
+  type GraphEdge,
+} from './graph'
 
 export interface GraphStoreState {
   document: GraphDocument
   selectedNodeIds: readonly string[]
   undoStack: readonly GraphDocument[]
   redoStack: readonly GraphDocument[]
+  connectionDiagnostic: ConnectionDiagnostic | null
   addNode(type: string, position: { x: number; y: number }, id?: string): string
   selectNode(id: string, additive?: boolean): void
   clearSelection(): void
@@ -13,6 +20,10 @@ export interface GraphStoreState {
   moveSelectedBy(delta: { x: number; y: number }): void
   duplicateSelected(createId?: () => string): readonly string[]
   toggleSelectedState(state: 'bypassed' | 'muted' | 'locked'): void
+  connectNodes(
+    edge: Omit<GraphEdge, 'id' | 'order'>,
+    id?: string,
+  ): ConnectionDiagnostic | null
   deleteSelected(): void
   undo(): void
   redo(): void
@@ -35,6 +46,7 @@ export function createGraphStore() {
     selectedNodeIds: [],
     undoStack: [],
     redoStack: [],
+    connectionDiagnostic: null,
     addNode(type, position, id = nextNodeId()) {
       const state = get()
       if (state.document.nodes.some((node) => node.id === id)) {
@@ -172,6 +184,26 @@ export function createGraphStore() {
         redoStack: [],
       })
     },
+    connectNodes(edge, id = `edge-${crypto.randomUUID()}`) {
+      const state = get()
+      const order = state.document.edges.filter(
+        (candidate) =>
+          candidate.targetNodeId === edge.targetNodeId &&
+          candidate.targetPortId === edge.targetPortId,
+      ).length
+      const result = connectGraph(state.document, { ...edge, id, order })
+      if (!result.ok) {
+        set({ connectionDiagnostic: result.diagnostic })
+        return result.diagnostic
+      }
+      set({
+        document: result.graph,
+        connectionDiagnostic: null,
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+      return null
+    },
     deleteSelected() {
       const state = get()
       if (state.selectedNodeIds.length === 0) return
@@ -194,6 +226,7 @@ export function createGraphStore() {
         selectedNodeIds: state.selectedNodeIds.filter((id) => !deleted.has(id)),
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
+        connectionDiagnostic: null,
       })
     },
     undo() {
@@ -205,6 +238,7 @@ export function createGraphStore() {
         selectedNodeIds: [],
         undoStack: state.undoStack.slice(0, -1),
         redoStack: [state.document, ...state.redoStack],
+        connectionDiagnostic: null,
       })
     },
     redo() {
@@ -216,6 +250,7 @@ export function createGraphStore() {
         selectedNodeIds: [],
         undoStack: [...state.undoStack, state.document],
         redoStack: state.redoStack.slice(1),
+        connectionDiagnostic: null,
       })
     },
   }))
