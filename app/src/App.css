@@ -298,6 +298,57 @@
   gap: 2px;
 }
 
+.catalog-empty,
+.outline-empty {
+  margin: 12px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.graph-outline {
+  padding: 16px;
+}
+
+.graph-outline h2 {
+  margin: 2px 0 12px;
+  font-size: 16px;
+}
+
+.graph-outline ol {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-outline button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-1);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.graph-outline button:hover,
+.graph-outline button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.graph-outline small {
+  color: var(--text-2);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
 .catalog-item {
   display: flex;
   align-items: center;
@@ -506,6 +557,7 @@
 }
 
 .workflow-node {
+  height: 100%;
   min-height: 128px;
   overflow: hidden;
   border: 1px solid var(--border-strong);
@@ -599,6 +651,17 @@
   height: 8px;
   border: 2px solid var(--surface-1);
   background: var(--accent);
+}
+
+.workflow-node .react-flow__resize-control.handle {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+}
+
+.workflow-node .react-flow__resize-control.line {
+  border-color: var(--accent);
 }
 
 .inspector-section {
@@ -752,6 +815,100 @@
 .diagnostic-list dd span {
   overflow-wrap: anywhere;
   color: var(--text-2);
+}
+
+.graph-command-form {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px 18px;
+}
+
+.graph-command-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.graph-command-form input,
+.graph-command-form select {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  font: inherit;
+}
+
+.geometry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-actions .primary-command,
+.secondary-command {
+  width: auto;
+  min-width: 82px;
+  min-height: 32px;
+  margin: 0;
+  padding: 5px 12px;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 650;
+}
+
+.secondary-command {
+  border: 1px solid var(--border-strong);
+  color: var(--text-1);
+  background: var(--surface-1);
+}
+
+.command-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.node-command-menu {
+  position: fixed;
+  z-index: 110;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-1);
+  box-shadow: 0 12px 32px rgb(15 23 42 / 20%);
+  transform: translate(-50%, -50%);
+}
+
+.node-command-menu button {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 3px;
+  color: var(--text-1);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.node-command-menu button:hover,
+.node-command-menu button:focus-visible {
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent);
 }
 
 .status-item.good {

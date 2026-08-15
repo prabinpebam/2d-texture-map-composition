@@ -41,6 +41,10 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
+import {
+  GraphCommandDialog,
+  type GraphCommandMode,
+} from './components/GraphCommandDialog'
 import { IconButton } from './components/IconButton'
 import { WorkflowNode, type WorkflowFlowNode } from './components/WorkflowNode'
 import { detectEnvironment } from './app/environment'
@@ -61,10 +65,7 @@ import {
 } from './app/storageReadiness'
 import { useGraphStore } from './app/graphState'
 import { NODE_TYPE_REGISTRY } from './domain/graph'
-import {
-  parseGraphWorkflow,
-  serializeGraphWorkflow,
-} from './app/graphWorkflowBoundary'
+import { serializeGraphWorkflow } from './app/graphWorkflowExport'
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
   input: 'Inputs',
@@ -92,6 +93,10 @@ const NODE_TYPES = { workflow: WorkflowNode }
 
 function App() {
   const [theme, setTheme] = useState<ThemePreference>('system')
+  const [catalogQuery, setCatalogQuery] = useState('')
+  const [inspectorView, setInspectorView] = useState<'inspector' | 'outline'>(
+    'inspector',
+  )
   const [selectedTemplate, setSelectedTemplate] =
     useState<NodeCatalogItem | null>(null)
   const [capabilities] = useState(detectEnvironment)
@@ -103,6 +108,10 @@ function App() {
   >(() => (capabilities.indexedDb ? 'checking' : 'unavailable'))
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [workflowNotice, setWorkflowNotice] = useState<string | null>(null)
+  const [graphCommand, setGraphCommand] = useState<GraphCommandMode | null>(
+    null,
+  )
+  const [nodeMenuOpen, setNodeMenuOpen] = useState(false)
   const graphDocument = useGraphStore((state) => state.document)
   const selectedNodeIds = useGraphStore((state) => state.selectedNodeIds)
   const undoStack = useGraphStore((state) => state.undoStack)
@@ -115,8 +124,12 @@ function App() {
   const clearSelection = useGraphStore((state) => state.clearSelection)
   const deleteSelected = useGraphStore((state) => state.deleteSelected)
   const moveNode = useGraphStore((state) => state.moveNode)
+  const setNodeGeometry = useGraphStore((state) => state.setNodeGeometry)
   const moveSelectedBy = useGraphStore((state) => state.moveSelectedBy)
   const duplicateSelected = useGraphStore((state) => state.duplicateSelected)
+  const bringSelectedToFront = useGraphStore(
+    (state) => state.bringSelectedToFront,
+  )
   const toggleSelectedState = useGraphStore(
     (state) => state.toggleSelectedState,
   )
@@ -133,9 +146,11 @@ function App() {
   const computeStatusRef = useRef<HTMLButtonElement>(null)
   const diagnosticsCloseRef = useRef<HTMLButtonElement>(null)
   const workflowInputRef = useRef<HTMLInputElement>(null)
+  const firstNodeMenuItemRef = useRef<HTMLButtonElement>(null)
 
   const ThemeIcon = THEME_ICONS[theme]
   const nextThemeValue = nextTheme(theme)
+  const normalizedCatalogQuery = catalogQuery.trim().toLowerCase()
   const flowNodes: WorkflowFlowNode[] = graphDocument.nodes.map((node) => {
     const definition = NODE_TYPE_REGISTRY[node.type]
     return {
@@ -153,13 +168,38 @@ function App() {
         bypassed: node.bypassed,
         muted: node.muted,
         locked: node.locked,
+        onResize: (width: number, height: number) =>
+          setNodeGeometry(node.id, {
+            ...node.position,
+            width,
+            height,
+          }),
       },
-      style: { width: node.size.width, minHeight: node.size.height },
+      style: { width: node.size.width, height: node.size.height },
     }
   })
   const selectedNode = graphDocument.nodes.find((node) =>
     selectedNodeIds.includes(node.id),
   )
+  const connectionOptions = selectedNode
+    ? NODE_TYPE_REGISTRY[selectedNode.type].outputs.flatMap((output) =>
+        graphDocument.nodes
+          .filter((target) => target.id !== selectedNode.id)
+          .flatMap((target) =>
+            NODE_TYPE_REGISTRY[target.type].inputs
+              .filter((input) => input.accepts.includes(output.dataType))
+              .map((input) => ({
+                value: JSON.stringify({
+                  sourceNodeId: selectedNode.id,
+                  sourcePortId: output.id,
+                  targetNodeId: target.id,
+                  targetPortId: input.id,
+                }),
+                label: `${output.label} to ${target.label}: ${input.label}`,
+              })),
+          ),
+      )
+    : []
   const flowEdges = graphDocument.edges.map((edge) => ({
     id: edge.id,
     source: edge.sourceNodeId,
@@ -205,8 +245,35 @@ function App() {
       }
 
       const step = event.shiftKey ? 10 : 1
+      if (event.shiftKey && event.key === 'F10' && selectedNodeIds.length > 0) {
+        event.preventDefault()
+        event.stopPropagation()
+        setNodeMenuOpen(true)
+        return
+      }
+      if (event.key === 'Home' || event.key === 'End') {
+        const orderedNodes = [...graphDocument.nodes].sort(
+          (left, right) =>
+            left.zIndex - right.zIndex || left.id.localeCompare(right.id),
+        )
+        const node =
+          event.key === 'Home' ? orderedNodes[0] : orderedNodes.at(-1)
+        if (node) {
+          event.preventDefault()
+          event.stopPropagation()
+          const nodeIndex = graphDocument.nodes.findIndex(
+            (candidate) => candidate.id === node.id,
+          )
+          const flowNodeElements =
+            graphRef.current?.querySelectorAll<HTMLElement>('.react-flow__node')
+          flowNodeElements?.[nodeIndex]?.focus()
+          selectNode(node.id)
+        }
+        return
+      }
       if (event.altKey && event.key.startsWith('Arrow')) {
         event.preventDefault()
+        event.stopPropagation()
         const delta = {
           x:
             event.key === 'ArrowLeft'
@@ -226,23 +293,92 @@ function App() {
       }
       if (event.key === 'Delete') {
         event.preventDefault()
+        event.stopPropagation()
         deleteSelected()
         return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        clearSelection()
+        return
+      }
+      if (event.ctrlKey && !event.shiftKey) {
+        const command = event.key.toLowerCase()
+        if (command === 'z' || command === 'y') {
+          event.preventDefault()
+          event.stopPropagation()
+          if (command === 'z') undo()
+          else redo()
+          return
+        }
       }
       if (event.ctrlKey && event.shiftKey) {
         const command = event.key.toLowerCase()
         if (command === 'b' || command === 'm' || command === 'l') {
           event.preventDefault()
+          event.stopPropagation()
           toggleSelectedState(
             command === 'b' ? 'bypassed' : command === 'm' ? 'muted' : 'locked',
           )
         }
       }
+      if (event.shiftKey && !event.ctrlKey) {
+        const command = event.key.toLowerCase()
+        if (command === 'a') {
+          event.preventDefault()
+          event.stopPropagation()
+          setGraphCommand('add')
+        } else if (command === 'c' && selectedNodeIds.length === 1) {
+          event.preventDefault()
+          event.stopPropagation()
+          setGraphCommand('connect')
+        } else if (command === 'r' && selectedNodeIds.length === 1) {
+          event.preventDefault()
+          event.stopPropagation()
+          setGraphCommand('geometry')
+        }
+      }
     }
 
-    document.addEventListener('keydown', handleGraphCommands)
-    return () => document.removeEventListener('keydown', handleGraphCommands)
-  }, [deleteSelected, moveSelectedBy, toggleSelectedState])
+    document.addEventListener('keydown', handleGraphCommands, true)
+    return () =>
+      document.removeEventListener('keydown', handleGraphCommands, true)
+  }, [
+    clearSelection,
+    deleteSelected,
+    graphDocument.nodes,
+    moveSelectedBy,
+    selectNode,
+    selectedNodeIds.length,
+    toggleSelectedState,
+    undo,
+    redo,
+    setNodeGeometry,
+  ])
+
+  useEffect(() => {
+    if (!graphCommand) return
+    function closeCommand(event: globalThis.KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      setGraphCommand(null)
+      requestAnimationFrame(() => graphRef.current?.focus())
+    }
+    document.addEventListener('keydown', closeCommand)
+    return () => document.removeEventListener('keydown', closeCommand)
+  }, [graphCommand])
+
+  useEffect(() => {
+    if (!nodeMenuOpen) return
+    firstNodeMenuItemRef.current?.focus()
+    function closeMenu(event: globalThis.KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      setNodeMenuOpen(false)
+      requestAnimationFrame(() => graphRef.current?.focus())
+    }
+    document.addEventListener('keydown', closeMenu)
+    return () => document.removeEventListener('keydown', closeMenu)
+  }, [nodeMenuOpen])
 
   useEffect(() => {
     if (!capabilities.workers) return
@@ -325,6 +461,7 @@ function App() {
   }
 
   async function importWorkflow(file: File) {
+    const { parseGraphWorkflow } = await import('./app/graphWorkflowBoundary')
     const result = parseGraphWorkflow(await file.text())
     if (!result.ok) {
       setWorkflowNotice(`Import rejected: ${result.error}`)
@@ -470,7 +607,12 @@ function App() {
           <label className="search-field">
             <Search aria-hidden="true" size={15} />
             <span className="sr-only">Search nodes</span>
-            <input placeholder="Search nodes" type="search" />
+            <input
+              onChange={(event) => setCatalogQuery(event.target.value)}
+              placeholder="Search nodes"
+              type="search"
+              value={catalogQuery}
+            />
           </label>
 
           <nav aria-label="Available nodes" className="catalog">
@@ -478,8 +620,15 @@ function App() {
               (category) => {
                 const CategoryIcon = CATEGORY_ICONS[category]
                 const items = NODE_CATALOG.filter(
-                  (item) => item.category === category,
+                  (item) =>
+                    item.category === category &&
+                    (normalizedCatalogQuery.length === 0 ||
+                      `${item.label} ${item.summary}`
+                        .toLowerCase()
+                        .includes(normalizedCatalogQuery)),
                 )
+
+                if (items.length === 0) return null
 
                 return (
                   <section className="catalog-section" key={category}>
@@ -505,6 +654,16 @@ function App() {
                 )
               },
             )}
+            {normalizedCatalogQuery.length > 0 &&
+            !NODE_CATALOG.some((item) =>
+              `${item.label} ${item.summary}`
+                .toLowerCase()
+                .includes(normalizedCatalogQuery),
+            ) ? (
+              <p className="catalog-empty" role="status">
+                No matching nodes
+              </p>
+            ) : null}
           </nav>
         </aside>
 
@@ -587,15 +746,69 @@ function App() {
             role="tablist"
             aria-label="Inspector views"
           >
-            <button aria-selected="true" role="tab" type="button">
+            <button
+              aria-selected={inspectorView === 'inspector'}
+              onClick={() => setInspectorView('inspector')}
+              role="tab"
+              type="button"
+            >
               Inspector
             </button>
-            <button aria-selected="false" disabled role="tab" type="button">
-              Preview
+            <button
+              aria-selected={inspectorView === 'outline'}
+              onClick={() => setInspectorView('outline')}
+              role="tab"
+              type="button"
+            >
+              Outline
             </button>
           </div>
 
-          {selectedTemplate ? (
+          {inspectorView === 'outline' ? (
+            <div className="graph-outline">
+              <p className="eyebrow">Graph order</p>
+              <h2>Nodes</h2>
+              {graphDocument.nodes.length === 0 ? (
+                <p className="outline-empty">No authored nodes</p>
+              ) : (
+                <ol>
+                  {[...graphDocument.nodes]
+                    .sort(
+                      (left, right) =>
+                        left.zIndex - right.zIndex ||
+                        left.id.localeCompare(right.id),
+                    )
+                    .map((node) => (
+                      <li key={node.id}>
+                        <button
+                          aria-pressed={selectedNodeIds.includes(node.id)}
+                          onClick={() => {
+                            selectNode(node.id)
+                            setSelectedTemplate(
+                              NODE_CATALOG.find(
+                                (item) => item.id === node.type,
+                              ) ?? null,
+                            )
+                          }}
+                          type="button"
+                        >
+                          <span>{node.label}</span>
+                          <small>
+                            {node.locked
+                              ? 'Locked'
+                              : node.muted
+                                ? 'Muted'
+                                : node.bypassed
+                                  ? 'Bypassed'
+                                  : 'Ready'}
+                          </small>
+                        </button>
+                      </li>
+                    ))}
+                </ol>
+              )}
+            </div>
+          ) : selectedTemplate ? (
             <div className="inspector-content">
               <div className="template-heading">
                 <span className={`template-icon ${selectedTemplate.category}`}>
@@ -793,6 +1006,97 @@ function App() {
               </div>
             </dl>
           </section>
+        </div>
+      ) : null}
+      {graphCommand ? (
+        <GraphCommandDialog
+          addOptions={NODE_CATALOG.map((item) => ({
+            value: item.id,
+            label: item.label,
+          }))}
+          connectionOptions={connectionOptions}
+          geometry={
+            selectedNode
+              ? { ...selectedNode.position, ...selectedNode.size }
+              : null
+          }
+          mode={graphCommand}
+          onAdd={(type) => {
+            const nodeCount = graphDocument.nodes.length
+            addNode(type, {
+              x: 100 + (nodeCount % 3) * 280,
+              y: 100 + Math.floor(nodeCount / 3) * 180,
+            })
+          }}
+          onClose={() => {
+            setGraphCommand(null)
+            requestAnimationFrame(() => graphRef.current?.focus())
+          }}
+          onConnect={(value) => {
+            if (!value) return false
+            const edge = JSON.parse(value) as {
+              sourceNodeId: string
+              sourcePortId: string
+              targetNodeId: string
+              targetPortId: string
+            }
+            return connectNodes(edge) === null
+          }}
+          onGeometry={(geometry) =>
+            selectedNode ? setNodeGeometry(selectedNode.id, geometry) : false
+          }
+        />
+      ) : null}
+      {nodeMenuOpen ? (
+        <div
+          aria-label="Node commands"
+          className="node-command-menu"
+          role="menu"
+        >
+          <button
+            onClick={() => {
+              duplicateSelected()
+              setNodeMenuOpen(false)
+            }}
+            ref={firstNodeMenuItemRef}
+            role="menuitem"
+            type="button"
+          >
+            Duplicate
+          </button>
+          <button
+            onClick={() => {
+              bringSelectedToFront()
+              setNodeMenuOpen(false)
+            }}
+            role="menuitem"
+            type="button"
+          >
+            Bring to front
+          </button>
+          {(['bypassed', 'muted', 'locked'] as const).map((state) => (
+            <button
+              key={state}
+              onClick={() => {
+                toggleSelectedState(state)
+                setNodeMenuOpen(false)
+              }}
+              role="menuitem"
+              type="button"
+            >
+              Toggle {state === 'bypassed' ? 'bypass' : state.slice(0, -1)}
+            </button>
+          ))}
+          <button
+            onClick={() => {
+              deleteSelected()
+              setNodeMenuOpen(false)
+            }}
+            role="menuitem"
+            type="button"
+          >
+            Delete
+          </button>
         </div>
       ) : null}
     </div>

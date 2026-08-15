@@ -1,4 +1,10 @@
-import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
+import {
+  Handle,
+  NodeResizer,
+  Position,
+  type Node,
+  type NodeProps,
+} from '@xyflow/react'
 
 export interface WorkflowNodeData extends Record<string, unknown> {
   label: string
@@ -8,6 +14,7 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   bypassed: boolean
   muted: boolean
   locked: boolean
+  onResize(width: number, height: number): void
 }
 
 export type WorkflowFlowNode = Node<WorkflowNodeData, 'workflow'>
@@ -24,6 +31,16 @@ export function WorkflowNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
     <div
       className={`workflow-node${selected ? ' selected' : ''}${data.locked ? ' locked' : ''}${data.muted ? ' muted' : ''}${data.bypassed ? ' bypassed' : ''}`}
     >
+      <NodeResizer
+        isVisible={selected && !data.locked}
+        maxHeight={1200}
+        maxWidth={560}
+        minHeight={96}
+        minWidth={180}
+        onResizeEnd={(_, parameters) =>
+          data.onResize(parameters.width, parameters.height)
+        }
+      />
       <div className="workflow-node-header">
         <span className="workflow-node-mark" aria-hidden="true" />
         <strong>{data.label}</strong>

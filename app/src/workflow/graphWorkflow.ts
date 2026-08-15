@@ -5,18 +5,13 @@ import {
   NODE_TYPE_REGISTRY,
   type GraphDocument,
 } from '../domain/graph'
+import {
+  serializeGraphWorkflow,
+  type GraphWorkflowV1,
+} from './serializeGraphWorkflow'
 
-export interface GraphWorkflowV1 {
-  format: 'textureflow-workflow'
-  formatVersion: '1.0.0'
-  project: {
-    id: string
-    name: string
-    viewport: { x: number; y: number; zoom: number }
-  }
-  nodes: GraphDocument['nodes']
-  edges: GraphDocument['edges']
-}
+export { serializeGraphWorkflow }
+export type { GraphWorkflowV1 }
 
 export type GraphWorkflowParseResult =
   | { ok: true; workflow: GraphWorkflowV1; document: GraphDocument }
@@ -24,20 +19,6 @@ export type GraphWorkflowParseResult =
 
 const ajv = new Ajv2020({ allErrors: true, strict: true })
 const validateWorkflow = ajv.compile<GraphWorkflowV1>(JSON.parse(schemaText))
-
-export function serializeGraphWorkflow(
-  document: GraphDocument,
-  project: GraphWorkflowV1['project'],
-): string {
-  const workflow: GraphWorkflowV1 = {
-    format: 'textureflow-workflow',
-    formatVersion: '1.0.0',
-    project,
-    nodes: document.nodes,
-    edges: document.edges,
-  }
-  return JSON.stringify(workflow)
-}
 
 export function parseGraphWorkflow(json: string): GraphWorkflowParseResult {
   let candidate: unknown

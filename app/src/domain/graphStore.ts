@@ -17,8 +17,13 @@ export interface GraphStoreState {
   selectNode(id: string, additive?: boolean): void
   clearSelection(): void
   moveNode(id: string, position: { x: number; y: number }): void
+  setNodeGeometry(
+    id: string,
+    geometry: { x: number; y: number; width: number; height: number },
+  ): boolean
   moveSelectedBy(delta: { x: number; y: number }): void
   duplicateSelected(createId?: () => string): readonly string[]
+  bringSelectedToFront(): void
   toggleSelectedState(state: 'bypassed' | 'muted' | 'locked'): void
   connectNodes(
     edge: Omit<GraphEdge, 'id' | 'order'>,
@@ -107,6 +112,38 @@ export function createGraphStore() {
         redoStack: [],
       })
     },
+    setNodeGeometry(id, geometry) {
+      const state = get()
+      const node = state.document.nodes.find((candidate) => candidate.id === id)
+      if (
+        !node ||
+        node.locked ||
+        !Object.values(geometry).every(Number.isFinite) ||
+        geometry.width < 180 ||
+        geometry.width > 560 ||
+        geometry.height < 96 ||
+        geometry.height > 1200
+      ) {
+        return false
+      }
+      set({
+        document: {
+          ...state.document,
+          nodes: state.document.nodes.map((candidate) =>
+            candidate.id === id
+              ? {
+                  ...candidate,
+                  position: { x: geometry.x, y: geometry.y },
+                  size: { width: geometry.width, height: geometry.height },
+                }
+              : candidate,
+          ),
+        },
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+      return true
+    },
     moveSelectedBy(delta) {
       const state = get()
       const selected = new Set(state.selectedNodeIds)
@@ -149,16 +186,64 @@ export function createGraphStore() {
         }))
       if (copies.length === 0) return []
       const copyIds = copies.map((node) => node.id)
+      const copiedNodeIds = new Map(
+        state.document.nodes
+          .filter((node) => selected.has(node.id))
+          .map((node, index) => [node.id, copies[index].id]),
+      )
+      const copiedEdges = state.document.edges
+        .filter(
+          (edge) =>
+            copiedNodeIds.has(edge.sourceNodeId) &&
+            copiedNodeIds.has(edge.targetNodeId),
+        )
+        .map((edge) => ({
+          ...edge,
+          id: createId(),
+          sourceNodeId: copiedNodeIds.get(edge.sourceNodeId)!,
+          targetNodeId: copiedNodeIds.get(edge.targetNodeId)!,
+        }))
       set({
         document: {
           ...state.document,
           nodes: [...state.document.nodes, ...copies],
+          edges: [...state.document.edges, ...copiedEdges],
         },
         selectedNodeIds: copyIds,
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
       })
       return copyIds
+    },
+    bringSelectedToFront() {
+      const state = get()
+      const selected = new Set(state.selectedNodeIds)
+      if (selected.size === 0) return
+      const selectedNodes = state.document.nodes
+        .filter((node) => selected.has(node.id))
+        .sort(
+          (left, right) =>
+            left.zIndex - right.zIndex || left.id.localeCompare(right.id),
+        )
+      const maxZIndex = Math.max(
+        -1,
+        ...state.document.nodes.map((node) => node.zIndex),
+      )
+      const zIndexById = new Map(
+        selectedNodes.map((node, index) => [node.id, maxZIndex + index + 1]),
+      )
+      set({
+        document: {
+          ...state.document,
+          nodes: state.document.nodes.map((node) =>
+            zIndexById.has(node.id)
+              ? { ...node, zIndex: zIndexById.get(node.id)! }
+              : node,
+          ),
+        },
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
     },
     toggleSelectedState(authoredState) {
       const state = get()

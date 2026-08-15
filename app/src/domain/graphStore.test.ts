@@ -53,6 +53,31 @@ describe('graph command store', () => {
     })
   })
 
+  it('sets bounded numeric node geometry and rejects invalid sizes', () => {
+    const store = createGraphStore()
+    store.getState().addNode('resize', { x: 0, y: 0 }, 'resize-a')
+    expect(
+      store.getState().setNodeGeometry('resize-a', {
+        x: 40,
+        y: 60,
+        width: 320,
+        height: 180,
+      }),
+    ).toBe(true)
+    expect(store.getState().document.nodes[0]).toMatchObject({
+      position: { x: 40, y: 60 },
+      size: { width: 320, height: 180 },
+    })
+    expect(
+      store.getState().setNodeGeometry('resize-a', {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 20,
+      }),
+    ).toBe(false)
+  })
+
   it('duplicates selected nodes and toggles supported authored states', () => {
     const store = createGraphStore()
     store.getState().addNode('resize', { x: 0, y: 0 }, 'resize-a')
@@ -72,6 +97,46 @@ describe('graph command store', () => {
       bypassed: true,
       muted: true,
     })
+  })
+
+  it('duplicates only internal selected edges with replacement IDs', () => {
+    const store = createGraphStore()
+    store.getState().addNode('resize', { x: 0, y: 0 }, 'first')
+    store.getState().addNode('resize', { x: 300, y: 0 }, 'second')
+    store.getState().connectNodes(
+      {
+        sourceNodeId: 'first',
+        sourcePortId: 'output',
+        targetNodeId: 'second',
+        targetPortId: 'input',
+      },
+      'original-edge',
+    )
+    store.getState().selectNode('first', true)
+    const ids = ['first-copy', 'second-copy', 'copied-edge']
+    store.getState().duplicateSelected(() => ids.shift()!)
+
+    expect(store.getState().document.edges).toContainEqual({
+      id: 'copied-edge',
+      sourceNodeId: 'first-copy',
+      sourcePortId: 'output',
+      targetNodeId: 'second-copy',
+      targetPortId: 'input',
+      order: 0,
+    })
+  })
+
+  it('brings selected nodes to the front as one undoable command', () => {
+    const store = createGraphStore()
+    store.getState().addNode('light', { x: 0, y: 0 }, 'first')
+    store.getState().addNode('light', { x: 20, y: 20 }, 'second')
+    store.getState().selectNode('first')
+    store.getState().bringSelectedToFront()
+    expect(store.getState().document.nodes[0].zIndex).toBeGreaterThan(
+      store.getState().document.nodes[1].zIndex,
+    )
+    store.getState().undo()
+    expect(store.getState().document.nodes[0].zIndex).toBe(0)
   })
 
   it('does not bypass source nodes or delete selected locked nodes and edges', () => {

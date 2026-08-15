@@ -1,5 +1,21 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import axe from 'axe-core'
+
+async function getAxeViolations(page: Page) {
+  await page.addScriptTag({ content: axe.source })
+  return page.evaluate(async () => {
+    const runtimeAxe = (
+      window as typeof window & {
+        axe: {
+          run(root: Document): Promise<{
+            violations: { id: string; impact: string | null }[]
+          }>
+        }
+      }
+    ).axe
+    return (await runtimeAxe.run(document)).violations
+  })
+}
 
 async function expectHitTestable(locator: Locator) {
   await expect(locator).toBeVisible()
@@ -269,6 +285,15 @@ test('keyboard user can move lock and duplicate a node', async ({
 
   const node = page.getByLabel('Resize node')
   await node.focus()
+  await page.keyboard.press('Shift+F10')
+  const nodeMenu = page.getByRole('menu', { name: 'Node commands' })
+  await expect(nodeMenu).toBeVisible()
+  await expect(
+    nodeMenu.getByRole('menuitem', { name: 'Duplicate' }),
+  ).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(nodeMenu).toBeHidden()
+  await expect(page.getByRole('main', { name: 'Graph canvas' })).toBeFocused()
   const initialBounds = await node.boundingBox()
   await page.keyboard.press('Alt+Shift+ArrowRight')
   const movedBounds = await node.boundingBox()
@@ -390,6 +415,225 @@ test('user can download and import the authored graph workflow', async ({
   const screenshotPath = testInfo.outputPath('m2-workflow-roundtrip.png')
   await importedPage.screenshot({ fullPage: true, path: screenshotPath })
   await testInfo.attach('m2-workflow-roundtrip', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('keyboard user can add connect and size nodes without dragging', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  const graph = page.getByRole('main', { name: 'Graph canvas' })
+  await graph.focus()
+
+  await page.keyboard.press('Shift+A')
+  await expect(page.getByRole('dialog', { name: 'Add node' })).toBeVisible()
+  expect(await getAxeViolations(page)).toEqual([])
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  await expect(page.getByLabel('Load image node')).toBeVisible()
+  await expect(graph).toBeFocused()
+
+  await page.keyboard.press('Shift+A')
+  await page.keyboard.type('Image preview')
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  await expect(page.getByLabel('Image preview node')).toBeVisible()
+  await expect(graph).toBeFocused()
+
+  await page.keyboard.press('Home')
+  await expect(page.getByLabel('Load image node')).toBeFocused()
+  await page.keyboard.press('Shift+C')
+  await expect(
+    page.getByRole('dialog', { name: 'Connect nodes' }),
+  ).toBeVisible()
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.react-flow__edge')).toHaveCount(1)
+
+  await page.keyboard.press('Home')
+  await page.keyboard.press('Shift+R')
+  await expect(
+    page.getByRole('dialog', { name: 'Position and size' }),
+  ).toBeVisible()
+  for (const value of ['40', '60', '320', '180']) {
+    await page.keyboard.press('Control+A')
+    await page.keyboard.type(value)
+    await page.keyboard.press('Tab')
+  }
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Enter')
+
+  const source = page.getByLabel('Load image node')
+  const bounds = await source.boundingBox()
+  expect(bounds).not.toBeNull()
+  expect(bounds!.width).toBeCloseTo(320, 0)
+  expect(bounds!.height).toBeGreaterThanOrEqual(180)
+
+  await page.keyboard.press('Delete')
+  await expect(source).toBeHidden()
+  await expect(page.locator('.react-flow__edge')).toHaveCount(0)
+  await page.keyboard.press('Control+Z')
+  await expect(page.getByLabel('Load image node')).toBeVisible()
+  await expect(page.locator('.react-flow__edge')).toHaveCount(1)
+
+  const screenshotPath = testInfo.outputPath('m2-keyboard-authoring.png')
+  await page.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m2-keyboard-authoring', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('large graph remains visibly interactive at 300 nodes', async ({
+  page,
+}, testInfo) => {
+  const nodes = Array.from({ length: 300 }, (_, index) => ({
+    id: `stress-${index}`,
+    type: 'resize',
+    label: 'Resize',
+    position: {
+      x: (index % 20) * 264,
+      y: Math.floor(index / 20) * 152,
+    },
+    size: { width: 240, height: 128 },
+    zIndex: index,
+    bypassed: false,
+    muted: false,
+    locked: false,
+  }))
+  const workflow = JSON.stringify({
+    format: 'textureflow-workflow',
+    formatVersion: '1.0.0',
+    project: {
+      id: 'stress-project',
+      name: '300 node stress',
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+    nodes,
+    edges: [],
+  })
+
+  await page.goto('/')
+  await page.getByLabel('Workflow file').setInputFiles({
+    name: 'stress.textureflow.json',
+    mimeType: 'application/vnd.textureflow.workflow+json',
+    buffer: Buffer.from(workflow),
+  })
+  await expect(page.getByText('Imported 300 nodes and 0 edges')).toBeVisible()
+  const renderedNodes = page.getByLabel('Resize node')
+  await expect(renderedNodes).toHaveCount(300)
+
+  const graph = page.getByRole('main', { name: 'Graph canvas' })
+  await graph.focus()
+  await page.evaluate(() => {
+    const target = window as typeof window & { homeLatency?: number }
+    target.homeLatency = undefined
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Home') return
+        const started = performance.now()
+        requestAnimationFrame(() => {
+          target.homeLatency = performance.now() - started
+        })
+      },
+      { capture: true, once: true },
+    )
+  })
+  await page.keyboard.press('Home')
+  await expect(renderedNodes.nth(0)).toBeFocused()
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as typeof window & { homeLatency?: number }).homeLatency,
+      ),
+    )
+    .toBeLessThan(100)
+  const homeLatency = await page.evaluate(
+    () => (window as typeof window & { homeLatency?: number }).homeLatency,
+  )
+  await testInfo.attach('m2-300-node-latency', {
+    body: JSON.stringify({ homeEventToPaintMilliseconds: homeLatency }),
+    contentType: 'application/json',
+  })
+
+  const firstBounds = await renderedNodes.nth(0).boundingBox()
+  expect(firstBounds).not.toBeNull()
+  expect(firstBounds!.width).toBeGreaterThan(24)
+  expect(firstBounds!.height).toBeGreaterThan(24)
+  expect(
+    await renderedNodes.nth(0).evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      const hit = document.elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2,
+      )
+      return hit === element || element.contains(hit)
+    }),
+  ).toBe(true)
+
+  const screenshotPath = testInfo.outputPath('m2-300-node-stress.png')
+  await page.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m2-300-node-stress', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('user can search outline and resize a node with pointer input', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Resize', exact: true }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+
+  const node = page.getByLabel('Resize node')
+  const initialBounds = await node.boundingBox()
+  const resizeHandle = page.locator(
+    '.react-flow__resize-control.handle.bottom.right',
+  )
+  await expect(resizeHandle).toBeVisible()
+  const handleBounds = await resizeHandle.boundingBox()
+  expect(initialBounds).not.toBeNull()
+  expect(handleBounds).not.toBeNull()
+  expect(handleBounds!.width).toBeGreaterThanOrEqual(24)
+  expect(handleBounds!.height).toBeGreaterThanOrEqual(24)
+  await page.mouse.move(
+    handleBounds!.x + handleBounds!.width / 2,
+    handleBounds!.y + handleBounds!.height / 2,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    handleBounds!.x + handleBounds!.width / 2 + 80,
+    handleBounds!.y + handleBounds!.height / 2 + 40,
+  )
+  await page.mouse.up()
+  await expect
+    .poll(async () => (await node.boundingBox())?.width)
+    .toBeGreaterThan(initialBounds!.width + 60)
+
+  const search = page.getByRole('searchbox', { name: 'Search nodes' })
+  await search.fill('preview')
+  await expect(
+    page.getByRole('button', { name: 'Image preview' }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Resize', exact: true }),
+  ).toBeHidden()
+
+  await page.getByRole('tab', { name: 'Outline' }).click()
+  const outlineNode = page.getByRole('button', { name: 'Resize Ready' })
+  await outlineNode.click()
+  await expect(outlineNode).toHaveAttribute('aria-pressed', 'true')
+
+  const screenshotPath = testInfo.outputPath('m2-search-outline-resize.png')
+  await page.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m2-search-outline-resize', {
     path: screenshotPath,
     contentType: 'image/png',
   })
