@@ -43,6 +43,7 @@ import {
   MiniMap,
   Panel,
   ReactFlow,
+  useNodesState,
   useUpdateNodeInternals,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -89,7 +90,6 @@ import {
 import { enqueueRun, interruptRuns, useRunRecords } from './app/runQueue'
 import {
   getPreviewState,
-  replacePreviewStates,
   setPreviewState,
   usePreviewState,
 } from './app/previewState'
@@ -211,9 +211,6 @@ function App() {
   const [nodeMenuOpen, setNodeMenuOpen] = useState(false)
   const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null)
   const [selectedEdgeIds, setSelectedEdgeIds] = useState<readonly string[]>([])
-  const [dragPositions, setDragPositions] = useState<
-    Readonly<Record<string, { x: number; y: number }>>
-  >({})
   const [nodeSearchRequest, setNodeSearchRequest] = useState<{
     point: { x: number; y: number }
   } | null>(null)
@@ -259,8 +256,11 @@ function App() {
     activeProject.id,
     activeProject.name,
   )
-  const runRecords = useRunRecords(capabilities.workers).filter(
-    (record) => record.projectId === activeProject.id,
+  const allRunRecords = useRunRecords(capabilities.workers)
+  const runRecords = useMemo(
+    () =>
+      allRunRecords.filter((record) => record.projectId === activeProject.id),
+    [activeProject.id, allRunRecords],
   )
   const currentExecutionContext = useRef({
     projectId: activeProject.id,
@@ -273,6 +273,13 @@ function App() {
     y: number
   } | null>(null)
   const suppressNextPaneDoubleClick = useRef(false)
+  const startRunRef = useRef(startRun)
+  const replaceNodeImageRef = useRef(replaceNodeImage)
+
+  useEffect(() => {
+    startRunRef.current = startRun
+    replaceNodeImageRef.current = replaceNodeImage
+  })
 
   useEffect(() => {
     currentExecutionContext.current = {
@@ -299,61 +306,94 @@ function App() {
   const activeRun = runRecords.find(
     (record) => record.status === 'queued' || record.status === 'running',
   )
-  const flowNodes: WorkflowFlowNode[] = graphDocument.nodes.map((node) => {
-    const definition = NODE_TYPE_REGISTRY[node.type]
-    const defaultSize = getDefaultNodeSize(node.type)
-    const latestRun = [...runRecords]
-      .reverse()
-      .find((record) => record.demandedNodeIds.includes(node.id))
-    return {
-      id: node.id,
-      type: 'workflow',
-      position: dragPositions[node.id] ?? node.position,
-      selected: selectedNodeIds.includes(node.id),
-      draggable: !node.locked && projectPersistence.access === 'writer',
-      dragHandle: '.drag-handle',
-      ariaLabel: `${node.label} node`,
-      data: {
-        label: node.label,
-        summary: definition.summary,
-        inputs: definition.inputs,
-        outputs: definition.outputs,
-        connectedInputIds: graphDocument.edges
-          .filter((edge) => edge.targetNodeId === node.id)
-          .map((edge) => edge.targetPortId),
-        renaming: renamingNodeId === node.id,
-        bypassed: node.bypassed,
-        muted: node.muted,
-        locked: node.locked,
-        node,
-        execution: latestRun?.nodes[node.id] ?? null,
-        stale: !!latestRun && latestRun.revision < authoredRevision,
-        onRunOutput:
-          node.type === 'preview' ? () => startRun([node.id]) : undefined,
-        onParameters: (patch: Record<string, unknown>) =>
-          updateNodeParameters(node.id, patch),
-        onLoadImage:
-          node.type === 'load-image'
-            ? (file: File) => void replaceNodeImage(node.id, file)
-            : undefined,
-        onRename: (label: string) => {
-          renameNode(node.id, label)
-          setRenamingNodeId(null)
-        },
-        onRenameCancel: () => setRenamingNodeId(null),
-        onResize: (width: number, height: number) =>
-          setNodeGeometry(node.id, {
-            ...node.position,
-            width,
-            height,
-          }),
-      },
-      style: {
-        width: Math.max(node.size.width, defaultSize.width),
-        height: Math.max(node.size.height, defaultSize.height),
-      },
-    }
-  })
+  const projectedFlowNodes = useMemo<WorkflowFlowNode[]>(
+    () =>
+      graphDocument.nodes.map((node) => {
+        const definition = NODE_TYPE_REGISTRY[node.type]
+        const defaultSize = getDefaultNodeSize(node.type)
+        const latestRun = [...runRecords]
+          .reverse()
+          .find((record) => record.demandedNodeIds.includes(node.id))
+        return {
+          id: node.id,
+          type: 'workflow',
+          position: node.position,
+          selected: selectedNodeIds.includes(node.id),
+          draggable: !node.locked && projectPersistence.access === 'writer',
+          dragHandle: '.drag-handle',
+          ariaLabel: `${node.label} node`,
+          data: {
+            label: node.label,
+            summary: definition.summary,
+            inputs: definition.inputs,
+            outputs: definition.outputs,
+            connectedInputIds: graphDocument.edges
+              .filter((edge) => edge.targetNodeId === node.id)
+              .map((edge) => edge.targetPortId),
+            renaming: renamingNodeId === node.id,
+            bypassed: node.bypassed,
+            muted: node.muted,
+            locked: node.locked,
+            node,
+            execution: latestRun?.nodes[node.id] ?? null,
+            stale: !!latestRun && latestRun.revision < authoredRevision,
+            onRunOutput:
+              node.type === 'preview'
+                ? () => startRunRef.current([node.id])
+                : undefined,
+            onParameters: (patch: Record<string, unknown>) =>
+              updateNodeParameters(node.id, patch),
+            onLoadImage:
+              node.type === 'load-image'
+                ? (file: File) =>
+                    void replaceNodeImageRef.current(node.id, file)
+                : undefined,
+            onRename: (label: string) => {
+              renameNode(node.id, label)
+              setRenamingNodeId(null)
+            },
+            onRenameCancel: () => setRenamingNodeId(null),
+            onResize: (geometry) => setNodeGeometry(node.id, geometry),
+          },
+          style: {
+            width: node.size.width || defaultSize.width,
+            height: node.size.height || defaultSize.height,
+          },
+        }
+      }),
+    [
+      authoredRevision,
+      graphDocument,
+      projectPersistence.access,
+      renameNode,
+      renamingNodeId,
+      runRecords,
+      selectedNodeIds,
+      setNodeGeometry,
+      updateNodeParameters,
+    ],
+  )
+  const [flowNodes, setFlowNodes, onFlowNodesChange] =
+    useNodesState<WorkflowFlowNode>(projectedFlowNodes)
+
+  useEffect(() => {
+    setFlowNodes((currentNodes) => {
+      const currentById = new globalThis.Map(
+        currentNodes.map((node) => [node.id, node] as const),
+      )
+      return projectedFlowNodes.map((projectedNode) => {
+        const currentNode = currentById.get(projectedNode.id)
+        if (!currentNode) return projectedNode
+        return {
+          ...currentNode,
+          ...projectedNode,
+          position: currentNode.dragging
+            ? currentNode.position
+            : projectedNode.position,
+        }
+      })
+    })
+  }, [projectedFlowNodes, setFlowNodes])
   const selectedNode = graphDocument.nodes.find((node) =>
     selectedNodeIds.includes(node.id),
   )
@@ -399,14 +439,22 @@ function App() {
     () =>
       Object.fromEntries(
         graphDocument.nodes
-          .filter(
-            (node) => node.type === 'preview' || node.type === 'load-image',
-          )
+          .filter((node) => node.type === 'preview')
           .map((node) => [
             node.id,
-            node.type === 'preview'
-              ? resolvePreviewBranch(graphDocument, node.id)
-              : resolveSourcePreviewBranch(graphDocument, node.id),
+            resolvePreviewBranch(graphDocument, node.id),
+          ]),
+      ),
+    [graphDocument],
+  )
+  const sourcePreviewBranches = useMemo(
+    () =>
+      Object.fromEntries(
+        graphDocument.nodes
+          .filter((node) => node.type === 'load-image')
+          .map((node) => [
+            node.id,
+            resolveSourcePreviewBranch(graphDocument, node.id),
           ]),
       ),
     [graphDocument],
@@ -487,26 +535,22 @@ function App() {
     let active = true
     queueMicrotask(() => {
       if (!active) return
-      replacePreviewStates(
-        Object.fromEntries(
-          Object.entries(previewBranches).map(([nodeId, branch]) => {
-            const previousState = getPreviewState(nodeId)
-            const previous =
-              previousState?.status === 'ready'
-                ? previousState.result
-                : previousState?.status === 'loading' ||
-                    previousState?.status === 'error'
-                  ? previousState.previous
-                  : undefined
-            return [
-              nodeId,
-              branch ? { status: 'loading', previous } : { status: 'idle' },
-            ]
-          }),
-        ),
-      )
+      for (const [nodeId, branch] of Object.entries(sourcePreviewBranches)) {
+        const previousState = getPreviewState(nodeId)
+        const previous =
+          previousState.status === 'ready'
+            ? previousState.result
+            : previousState.status === 'loading' ||
+                previousState.status === 'error'
+              ? previousState.previous
+              : undefined
+        setPreviewState(
+          nodeId,
+          branch ? { status: 'loading', previous } : { status: 'idle' },
+        )
+      }
     })
-    for (const [nodeId, branch] of Object.entries(previewBranches)) {
+    for (const [nodeId, branch] of Object.entries(sourcePreviewBranches)) {
       if (!branch) continue
       void renderPreviewBranch(activeProject.id, branch)
         .then((result) => {
@@ -533,7 +577,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [activeProject.id, previewBranches])
+  }, [activeProject.id, sourcePreviewBranches])
 
   function startRun(targetOutputIds?: readonly string[]) {
     const capturedDocument = graphDocument
@@ -563,22 +607,45 @@ function App() {
         execute: async (context) => {
           const branch = resolvePreviewBranch(capturedDocument, context.nodeId)
           if (!branch) throw new Error('Output has no executable image branch')
-          const result = await renderPreviewBranch(
-            context.projectId,
-            branch,
-            `${context.nodeId}:run:${context.runId}`,
-          )
-          const current = currentExecutionContext.current
-          if (
-            current.projectId === context.projectId &&
-            current.revision === context.revision
-          ) {
-            setPreviewState(context.nodeId, { status: 'ready', result })
+          try {
+            const result = await renderPreviewBranch(
+              context.projectId,
+              branch,
+              context.nodeId,
+            )
+            const current = currentExecutionContext.current
+            if (
+              current.projectId === context.projectId &&
+              current.revision === context.revision
+            ) {
+              setPreviewState(context.nodeId, { status: 'ready', result })
+            }
+            return { cacheHit: result.cacheHit }
+          } catch (error) {
+            const current = currentExecutionContext.current
+            if (
+              current.projectId === context.projectId &&
+              current.revision === context.revision
+            ) {
+              const preview = getPreviewState(context.nodeId)
+              setPreviewState(context.nodeId, {
+                status: 'error',
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : 'Output execution failed',
+                previous:
+                  preview.status === 'ready'
+                    ? preview.result
+                    : preview.status === 'loading' || preview.status === 'error'
+                      ? preview.previous
+                      : undefined,
+              })
+            }
+            throw error
           }
-          return { cacheHit: result.cacheHit }
         },
-        cancel: (context) =>
-          cancelPreviewBranch(`${context.nodeId}:run:${context.runId}`),
+        cancel: (context) => cancelPreviewBranch(context.nodeId),
       },
     )
     setQueueOpen(true)
@@ -1411,6 +1478,7 @@ function App() {
               minZoom={0.2}
               nodeTypes={NODE_TYPES}
               nodes={flowNodes}
+              onNodesChange={onFlowNodesChange}
               onConnect={(connection) => {
                 if (projectPersistence.access !== 'writer') return
                 if (
@@ -1438,21 +1506,10 @@ function App() {
                 setSelectedEdgeIds([])
                 selectNode(node.id, event.shiftKey)
               }}
-              onNodeDrag={(_, node) => {
-                setDragPositions((current) => ({
-                  ...current,
-                  [node.id]: node.position,
-                }))
-              }}
               onNodeDragStop={(_, node) => {
                 if (projectPersistence.access === 'writer') {
                   moveNode(node.id, node.position)
                 }
-                setDragPositions((current) => {
-                  const next = { ...current }
-                  delete next[node.id]
-                  return next
-                })
               }}
               onMoveEnd={(_, viewport) => setViewport(viewport)}
               onEdgesDelete={(edges) => {

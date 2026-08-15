@@ -129,10 +129,10 @@ undoable, serializable, and immediately restorable on disconnect.
 
 ### Authoring, draft, and run separation
 
-Authored graph commits update dirty identities and may request a bounded draft for
-visible node-local feedback. Draft work has no run ID and cannot produce a
-completed queue record. A workflow run begins only from Run workflow or Run
-selected output and captures one immutable project revision plus output demand.
+Authored graph commits update dirty identities but dispatch no workflow compute.
+A workflow run begins only from Run workflow or Run selected output and captures
+one immutable project revision plus output demand. Load Image source sniffing and
+its own bounded thumbnail are asset-ingestion work, not graph evaluation.
 
 ### Explicit run algorithm
 
@@ -154,9 +154,9 @@ selected output and captures one immutable project revision plus output demand.
   bounded run history. A newer authored revision makes the result visibly stale
   but does not erase it.
 
-Priority order is direct-manipulation preview, visible settled preview, analysis
-node, explicit save thumbnail, then export. Export may reserve throughput but
-cannot starve interaction.
+Priority order inside an explicit run is visible output, analysis node, explicit
+save thumbnail, then export. Export may reserve throughput but cannot starve
+interaction.
 
 Run queue ordering is separate from tile priority. Default Run appends; optional
 Run Next/front-of-queue is a distinct command. One active workflow run is the P0
@@ -229,27 +229,22 @@ WebGPU backend requirements:
   degraded performance.
 - Never write WebGPU-specific values into workflow JSON.
 
-## 8. Preview Pipeline
+## 8. Result and Source-Thumbnail Pipeline
 
-Visible node-local preview demand drives draft evaluation. Explicit runs drive
-current result publication. Workers produce transferable `ImageBitmap` or bounded
-RGBA tiles. The result registry owns current and immediately previous handles per
-node; replacing one closes/releases the old object. Node-local and inspector
-previews subscribe to the same handle and metadata.
+Explicit runs alone drive workflow result publication. Workers produce bounded
+transferable RGBA results. The result registry owns current and immediately
+previous handles per node; replacing one releases the old object. Node-local and
+inspector previews subscribe to the same handle and metadata.
 
-While editing:
+While editing, the latest completed result remains visible with a stale/dirty
+indicator and no worker request is sent. Run transitions it through queued,
+running, cached/succeeded, canceled, or error. Direct graph movement never
+recomputes pixels because it creates no run and position is absent from cache
+identity.
 
-1. Existing result remains visible with stale indicator.
-2. Cheap preview generation starts after a 50 ms coalescing window.
-3. Newer input supersedes older generations.
-4. After 250 ms idle, settled-quality preview may replace draft.
-
-Draft, queued, running, cached, succeeded, stale, canceled, and error metadata are
-orthogonal to the bitmap. Node geometry remains stable when metadata changes.
-
-These are scheduling windows, not user-visible delays or persistence timers.
-Direct graph movement does not recompute pixels because position is absent from
-cache identity.
+Load Image import/replace separately decodes one bounded source thumbnail after
+signature validation. That thumbnail cannot traverse edges, create run records,
+or update downstream results.
 
 ## 9. IndexedDB Schema v1
 

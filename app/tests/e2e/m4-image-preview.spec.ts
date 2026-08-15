@@ -41,6 +41,14 @@ function makeRgbaPng(red: number, green: number, blue: number, alpha: number) {
 
 const colorPng = makeRgbaPng(64, 128, 192, 128)
 
+async function runWorkflow(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: 'Run workflow' }).click()
+  await expect(
+    page.locator('.run-history-row').first().getByText('succeeded'),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Close run history' }).click()
+}
+
 test('user imports an image and previews every mask interpretation', async ({
   page,
 }, testInfo) => {
@@ -61,8 +69,10 @@ test('user imports an image and previews every mask interpretation', async ({
   await loadNode
     .getByLabel('Image output', { exact: true })
     .dragTo(previewNode.getByLabel('Image input'))
+  await expect(previewNode.getByRole('img')).toHaveCount(0)
+  await runWorkflow(page)
 
-  const canvas = previewNode.getByRole('img', {
+  let canvas = previewNode.getByRole('img', {
     name: 'Image preview, 1 by 1 pixels',
   })
   await expect(canvas).toHaveAttribute('data-pixel-sample', '64,128,191,128')
@@ -88,6 +98,8 @@ test('user imports an image and previews every mask interpretation', async ({
   const samples: Record<string, string | null> = {}
   for (const source of Object.keys(expectedSamples)) {
     await maskSource.selectOption(source)
+    await runWorkflow(page)
+    canvas = previewNode.getByRole('img')
     await expect(canvas).toHaveAttribute(
       'data-pixel-sample',
       expectedSamples[source as keyof typeof expectedSamples],
@@ -101,22 +113,29 @@ test('user imports an image and previews every mask interpretation', async ({
   await maskSource.selectOption('red')
   await maskSource.selectOption('blue')
   await expect(canvas).toHaveAttribute('data-pixel-sample', '133,133,133,255')
-  expect(Number(await canvas.getAttribute('data-generation'))).toBeGreaterThan(
+  expect(Number(await canvas.getAttribute('data-generation'))).toBe(
     generationBeforeRace,
   )
+  await runWorkflow(page)
   await maskSource.selectOption('alpha')
+  await runWorkflow(page)
   await expect(canvas).toHaveAttribute('data-pixel-sample', '128,128,128,255')
   await expect(canvas).toHaveAttribute('data-cache-hit', 'true')
   await loadNode
     .getByRole('checkbox', { name: 'Invert mask', exact: true })
     .check()
+  await expect(canvas).toHaveAttribute('data-pixel-sample', '128,128,128,255')
+  await runWorkflow(page)
   await expect(canvas).toHaveAttribute('data-pixel-sample', '127,127,127,255')
 
   await page.getByRole('button', { name: 'Save project' }).click()
   await page.reload()
   await expect(page.getByLabel('Load image node')).toBeVisible()
   await expect(page.getByLabel('Image preview node')).toBeVisible()
-  await page.getByRole('button', { name: 'Image preview' }).click()
+  await expect(
+    page.getByLabel('Image preview node').getByRole('img'),
+  ).toHaveCount(0)
+  await runWorkflow(page)
   await expect(
     page
       .getByLabel('Image preview node')
@@ -175,6 +194,10 @@ test('preview rejects decoded allocation beyond the worker memory budget', async
   await loadNode
     .getByLabel('Image output', { exact: true })
     .dragTo(page.getByLabel('Image preview node').getByLabel('Image input'))
+  await page.getByRole('button', { name: 'Run workflow' }).click()
+  await expect(
+    page.locator('.run-history-row').first().getByText('failed'),
+  ).toBeVisible()
   await expect(
     page.getByLabel('Image preview node').getByRole('alert').filter({
       hasText: 'Decoded image exceeds the preview memory budget',

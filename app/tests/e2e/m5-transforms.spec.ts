@@ -70,6 +70,14 @@ function resizeSourcePng() {
   ])
 }
 
+async function runWorkflow(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: 'Run workflow' }).click()
+  await expect(
+    page.locator('.run-history-row').first().getByText('succeeded'),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Close run history' }).click()
+}
+
 test('user composes resize brightness and color corrections in preview', async ({
   page,
 }, testInfo) => {
@@ -127,7 +135,11 @@ test('user composes resize brightness and color corrections in preview', async (
     .getByLabel('Image output', { exact: true })
     .dragTo(previewNode.getByLabel('Image input'))
 
-  const canvas = page.getByRole('img', { name: 'Image preview, 2 by 2 pixels' })
+  await expect(previewNode.getByRole('img')).toHaveCount(0)
+  await runWorkflow(page)
+  const canvas = previewNode.getByRole('img', {
+    name: 'Image preview, 2 by 2 pixels',
+  })
   await expect(canvas).toHaveAttribute('data-pixel-sample', '64,128,191,128')
   await expect(previewNode.getByRole('img')).toHaveCount(1)
 
@@ -141,6 +153,9 @@ test('user composes resize brightness and color corrections in preview', async (
     })
     .fill('0.5')
   await colorNode.getByLabel('Color correction Tint color').fill('#ff0000')
+  await expect(canvas).toHaveAttribute('data-pixel-sample', '64,128,191,128')
+  await expect(previewNode).toContainText('Stale')
+  await runWorkflow(page)
 
   const sourcePixel = {
     red: encodedSrgbToLinear(64 / 255),
@@ -169,8 +184,13 @@ test('user composes resize brightness and color corrections in preview', async (
 
   await page.getByRole('button', { name: 'Save project' }).click()
   await page.reload()
+  const restoredPreviewNode = page.getByLabel('Image preview node')
+  await expect(restoredPreviewNode.getByRole('img')).toHaveCount(0)
+  await runWorkflow(page)
   await expect(
-    page.getByRole('img', { name: 'Image preview, 2 by 2 pixels' }),
+    restoredPreviewNode.getByRole('img', {
+      name: 'Image preview, 2 by 2 pixels',
+    }),
   ).toHaveAttribute('data-pixel-sample', sample!)
 
   const screenshotPath = testInfo.outputPath('m5-transform-chain.png')
@@ -217,10 +237,16 @@ test('named resize algorithms produce distinct non-degenerate preview pixels', a
     .getByLabel('Output output')
     .dragTo(previewNode.getByLabel('Image input'))
 
-  const canvas = page.getByRole('img', { name: 'Image preview, 2 by 1 pixels' })
+  await expect(previewNode.getByRole('img')).toHaveCount(0)
+  await runWorkflow(page)
+  const canvas = previewNode.getByRole('img', {
+    name: 'Image preview, 2 by 1 pixels',
+  })
   await expect(canvas).toBeVisible()
   const nearestSample = await canvas.getAttribute('data-pixel-sample')
   await resizeNode.getByLabel('Resize Method').selectOption('mitchell.v1')
+  await expect(canvas).toHaveAttribute('data-pixel-sample', nearestSample!)
+  await runWorkflow(page)
   await expect
     .poll(() => canvas.getAttribute('data-pixel-sample'))
     .not.toBe(nearestSample)

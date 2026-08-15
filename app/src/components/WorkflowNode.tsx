@@ -40,7 +40,12 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   onRename(label: string): void
   onRenameCancel(): void
   onRunOutput?: () => void
-  onResize(width: number, height: number): void
+  onResize(geometry: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }): void
 }
 
 export type WorkflowFlowNode = Node<WorkflowNodeData, 'workflow'>
@@ -109,6 +114,12 @@ export function WorkflowNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
           : data.execution
             ? data.execution.phase
             : 'Ready'
+  const minimumHeight =
+    data.node.type === 'load-image'
+      ? 300
+      : data.node.type === 'preview'
+        ? 220
+        : 96
   return (
     <div
       className={`workflow-node${selected ? ' selected' : ''}${data.locked ? ' locked' : ''}${data.muted ? ' muted' : ''}${data.bypassed ? ' bypassed' : ''}`}
@@ -118,10 +129,15 @@ export function WorkflowNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
         isVisible={selected && !data.locked}
         maxHeight={1200}
         maxWidth={640}
-        minHeight={96}
+        minHeight={minimumHeight}
         minWidth={180}
         onResizeEnd={(_, parameters) =>
-          data.onResize(parameters.width, parameters.height)
+          data.onResize({
+            x: parameters.x,
+            y: parameters.y,
+            width: parameters.width,
+            height: parameters.height,
+          })
         }
       />
       <div className="workflow-node-header drag-handle">

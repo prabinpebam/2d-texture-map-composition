@@ -22,6 +22,8 @@ not time boxes. A milestone closes only with its objective evidence.
   previews live in nodes; inspector fields are schema-driven mirrors/details.
 - Separate authored edits/drafts from explicit workflow runs, partial runs, queue
   records, and current completed results.
+- Do not evaluate workflows from authored edits. Only Run workflow or Run branch
+  may dispatch graph compute; Load Image's bounded source thumbnail is ingestion.
 - Schema and algorithm versioning begin with the first saved fixture, not at release.
 - Reopen the smallest milestone/work package that fails a higher-level gate.
 - Do not close or commit an implementation milestone until Playwright opens the
@@ -264,6 +266,12 @@ closure is blocked until R1 passes.
   single authored move commit, including edge/minimap tracking and undo evidence.
 - R1.12 Add ComfyUI-style Load Image browse/replace, node drop, clipboard paste,
   source thumbnail/metadata, shared validation/persistence, and recovery states.
+- R1.13 Remove edit-driven workflow evaluation, let React Flow own transient drag
+  rendering, keep completed output stale through edits, and prove workers/queue
+  remain idle until explicit Run.
+- R1.14 Convert node bodies to container-responsive layouts so Load Image and
+  Preview media fill remaining resized space, compact controls reflow, and resize
+  remains render-only until one authored release commit.
 
 **Exit evidence**
 
@@ -290,6 +298,11 @@ closure is blocked until R1 passes.
 - Browse, node drop, and clipboard paste all load/replace through the same asset
   boundary, show actual in-node source pixels/metadata, persist, reload, and fail
   without discarding the previous valid source.
+- Connect/edit/move/resize leave output generation and queue history unchanged;
+  explicit Run alone computes and publishes the captured revision.
+- Resizing a media node continuously changes the actual painted canvas area in
+  proportion to available bounds, preserves aspect and controls, and creates one
+  persisted size command without worker activity.
 
 ### M5: Resize and correction nodes
 

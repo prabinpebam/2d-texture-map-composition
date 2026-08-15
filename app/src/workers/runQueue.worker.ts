@@ -21,7 +21,6 @@ const workerScope = self as DedicatedWorkerGlobalScope
 const runs = new Map<string, ScheduledRun>()
 const records: RunRecord[] = []
 const pendingRunIds: string[] = []
-const completedOutputKeys = new Set<string>()
 let activeRun: ScheduledRun | null = null
 
 function post(response: RunQueueResponse) {
@@ -84,13 +83,6 @@ function executeNextNode() {
         diagnostic: 'Output has no executable image branch',
       })
       finishRun(run, 'failed', 'Output has no executable image branch')
-      return
-    }
-    if (completedOutputKeys.has(cacheKey)) {
-      updateNode(run, nodeId, { phase: 'cached', progress: 1 })
-      run.nextNodeIndex += 1
-      emitSnapshot()
-      setTimeout(executeNextNode, 0)
       return
     }
     updateNode(run, nodeId, { phase: 'running', progress: 0.9 })
@@ -250,8 +242,6 @@ function receiveOutput(
     finishRun(run, 'failed', request.diagnostic ?? 'Output execution failed')
     return
   }
-  const cacheKey = run.request.outputCacheKeys[request.nodeId]
-  completedOutputKeys.add(cacheKey)
   updateNode(run, request.nodeId, {
     phase: request.cacheHit ? 'cached' : 'succeeded',
     progress: 1,

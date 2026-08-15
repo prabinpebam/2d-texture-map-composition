@@ -47,6 +47,14 @@ async function addFromLibrary(
   await page.getByRole('button', { name: 'Add to canvas' }).click()
 }
 
+async function runWorkflow(page: import('@playwright/test').Page) {
+  await page.getByRole('button', { name: 'Run workflow' }).click()
+  await expect(
+    page.locator('.run-history-row').first().getByText('succeeded'),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Close run history' }).click()
+}
+
 test('Comfy-style node sockets drive widgets and preserve manual fallback', async ({
   page,
 }, testInfo) => {
@@ -95,6 +103,8 @@ test('Comfy-style node sockets drive widgets and preserve manual fallback', asyn
   await expect(widthFallback).toBeDisabled()
   await expect(widthFallback).toHaveValue('7')
   await expect(resizeNode.getByText('Driven', { exact: true })).toBeVisible()
+  await expect(previewNode.getByRole('img')).toHaveCount(0)
+  await runWorkflow(page)
   await expect(
     previewNode.getByRole('img', { name: 'Image preview, 2 by 1 pixels' }),
   ).toHaveAttribute('data-pixel-sample', '64,128,192,255')
@@ -155,6 +165,10 @@ test('Comfy-style node sockets drive widgets and preserve manual fallback', asyn
     }),
   ).toBeDisabled()
   await expect(
+    page.getByLabel('Image preview node').getByRole('img'),
+  ).toHaveCount(0)
+  await runWorkflow(page)
+  await expect(
     page.getByLabel('Image preview node').getByRole('img', {
       name: 'Image preview, 2 by 1 pixels',
     }),
@@ -188,6 +202,12 @@ test('Comfy-style node sockets drive widgets and preserve manual fallback', asyn
   })
   await expect(restoredFallback).toBeEnabled()
   await expect(restoredFallback).toHaveValue('7')
+  await expect(
+    page.getByLabel('Image preview node').getByRole('img', {
+      name: 'Image preview, 2 by 1 pixels',
+    }),
+  ).toBeVisible()
+  await runWorkflow(page)
   await expect(
     page.getByLabel('Image preview node').getByRole('img', {
       name: 'Image preview, 7 by 1 pixels',

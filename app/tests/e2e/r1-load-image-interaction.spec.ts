@@ -104,6 +104,67 @@ test('Comfy-style sockets, live dragging, and Load Image ingestion stay visible'
   await expect(nodeBody).toHaveCSS('overflow', 'visible')
 
   const workspace = page.locator('.workspace')
+  const sourceCanvas = loadNode.getByRole('img', {
+    name: 'Image preview, 2 by 1 pixels',
+  })
+  const initialNodeSize = await loadNode.boundingBox()
+  const initialCanvasSize = await sourceCanvas.boundingBox()
+  const initialGeneration = await sourceCanvas.getAttribute('data-generation')
+  const resizeRevision = Number(
+    await workspace.getAttribute('data-authored-revision'),
+  )
+  const resizeUndoDepth = Number(
+    await workspace.getAttribute('data-undo-depth'),
+  )
+  await loadNode.click()
+  const resizeHandle = loadNode.locator(
+    '.react-flow__resize-control.handle.bottom.right',
+  )
+  const resizeHandleBounds = await resizeHandle.boundingBox()
+  await page.mouse.move(
+    resizeHandleBounds!.x + resizeHandleBounds!.width / 2,
+    resizeHandleBounds!.y + resizeHandleBounds!.height / 2,
+  )
+  await page.mouse.down()
+  await page.mouse.move(
+    resizeHandleBounds!.x + resizeHandleBounds!.width / 2 + 180,
+    resizeHandleBounds!.y + resizeHandleBounds!.height / 2 + 160,
+    { steps: 10 },
+  )
+  const resizingNodeSize = await loadNode.boundingBox()
+  const resizingCanvasSize = await sourceCanvas.boundingBox()
+  expect(resizingNodeSize!.width).toBeGreaterThan(initialNodeSize!.width + 140)
+  expect(resizingNodeSize!.height).toBeGreaterThan(
+    initialNodeSize!.height + 120,
+  )
+  expect(resizingCanvasSize!.width).toBeGreaterThan(
+    initialCanvasSize!.width + 140,
+  )
+  expect(resizingCanvasSize!.height).toBeGreaterThan(
+    initialCanvasSize!.height + 100,
+  )
+  expect(await sourceCanvas.getAttribute('data-generation')).toBe(
+    initialGeneration,
+  )
+  expect(Number(await workspace.getAttribute('data-authored-revision'))).toBe(
+    resizeRevision,
+  )
+  expect(Number(await workspace.getAttribute('data-undo-depth'))).toBe(
+    resizeUndoDepth,
+  )
+  await page.mouse.up()
+  await expect
+    .poll(async () =>
+      Number(await workspace.getAttribute('data-authored-revision')),
+    )
+    .toBe(resizeRevision + 1)
+  await expect
+    .poll(async () => Number(await workspace.getAttribute('data-undo-depth')))
+    .toBe(resizeUndoDepth + 1)
+  await page.getByRole('button', { name: 'Run history' }).click()
+  await expect(page.getByText('No workflow runs yet')).toBeVisible()
+  await page.getByRole('button', { name: 'Close run history' }).click()
+
   const initialRevision = Number(
     await workspace.getAttribute('data-authored-revision'),
   )
@@ -189,6 +250,12 @@ test('Comfy-style sockets, live dragging, and Load Image ingestion stay visible'
   const restoredNode = page.getByLabel('Load image node')
   await expectSourceSample(restoredNode, '0,0,255,255')
   await expect(restoredNode).toContainText('2 × 1')
+  const restoredNodeSize = await restoredNode.boundingBox()
+  const restoredCanvasSize = await restoredNode.getByRole('img').boundingBox()
+  expect(restoredNodeSize!.width).toBeCloseTo(resizingNodeSize!.width, 0)
+  expect(restoredNodeSize!.height).toBeCloseTo(resizingNodeSize!.height, 0)
+  expect(restoredCanvasSize!.width).toBeGreaterThan(initialCanvasSize!.width)
+  expect(restoredCanvasSize!.height).toBeGreaterThan(initialCanvasSize!.height)
 
   const screenshotPath = testInfo.outputPath('r1-load-image-comfy.png')
   await page.screenshot({ fullPage: true, path: screenshotPath })
@@ -202,6 +269,10 @@ test('Comfy-style sockets, live dragging, and Load Image ingestion stay visible'
         socketGeometry,
         initialBounds,
         draggingBounds,
+        initialNodeSize,
+        resizingNodeSize,
+        initialCanvasSize,
+        resizingCanvasSize,
         initialRevision,
         committedRevision: initialRevision + 1,
         samples: {

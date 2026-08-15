@@ -130,8 +130,9 @@ approval; a failing test is not fixed by automatic golden replacement.
 - Preview refinement and full export agree after matching extent/quantization.
 - Node-local and inspector fields bind the same authored key, validation, default,
   reset, undo transaction, and serialized value.
-- Draft preview completion creates no workflow run record and cannot mark a stale
-  completed output current.
+- Parameter, edge, geometry, selection, and viewport edits dispatch zero workflow
+  execution requests. Load Image source-thumbnail decode is the sole ingestion
+  exception and cannot mark any downstream output current.
 - Full run demands every active output branch; partial run demands only selected
   output ancestors. Undemanded branches produce no execution events.
 - A stale run/revision/generation/token completion cannot replace current output.
@@ -209,6 +210,8 @@ alpha defects. Diff images are evidence, not the sole detector.
 | E2E-020 | Widget input override and fallback | every widget exposes typed socket; external drive changes effective value/output; manual fallback survives disable, undo, save/reload, and disconnect |
 | E2E-021 | Live drag and socket geometry | sampled intermediate node/edge positions during title drag; one revision/undo commit; socket circles and hit targets extend outside node bounds without clipping |
 | E2E-022 | ComfyUI Load Image ingestion | Browse, direct node drop, and clipboard image paste/replace; actual in-node pixel/metadata thumbnail; persisted reload and invalid-input recovery |
+| E2E-023 | Explicit-run-only execution | connect/edit/move/resize produce no queue record, output generation, or worker execution; Run produces one captured revision; later edits leave that result stale until the next Run |
+| E2E-024 | Responsive node resize | pointer-resize Load Image/Preview at intermediate and final bounds; canvas painted area grows with available node space, aspect/controls/sockets remain valid, no run record/generation changes, one size undo commit |
 
 Playwright must use real event input. DOM presence/classes alone do not prove
 visibility or usability. Overlays, menus, dialogs, ports, and previews require

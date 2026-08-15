@@ -175,6 +175,10 @@ application chrome remains TextureFlow-branded.
 - Node-local previews use an authored or type-default aspect ratio and explicit
   min-height. Empty/loading/stale/error/cached/result states occupy identical
   bounds. Image arrival cannot move neighboring nodes or handles.
+- Preview/source/result regions are flexible tracks, not fixed-height thumbnails.
+  They take the node's remaining space after title, ports, widgets, and footer;
+  their canvas fills that track with `object-fit:contain`. At narrow widths widget
+  grids reduce nonessential slider columns before labels/values become unusable.
 - Collapse hides widgets and preview but retains title, state, ports, dirty/result
   indicator, and authored values. Collapse is authored UI state and round-trips.
 

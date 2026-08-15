@@ -20,6 +20,10 @@ The required outcome is functional parity, not a static resemblance:
 - The title bar is the node drag surface; operating the body never moves the node.
 - Nodes resize from every corner with the same unconstrained pointer affordance,
   bounded only by readable minimums and product memory/layout limits.
+- Resizing reallocates usable node content in real time. Fixed chrome remains
+  compact while preview/thumbnail/result regions expand to consume remaining
+  width and height; a larger node may not retain a small fixed preview surrounded
+  by unused space.
 - Typed circular sockets sit on the left for inputs and right for outputs, align
   with their labels or widget rows, use stable type colors, and remain fully
   visible outside the node border without clipping.
@@ -36,6 +40,9 @@ The required outcome is functional parity, not a static resemblance:
 - Node position follows the pointer continuously during title drag. The authored
   command/history/revision commits once at pointer release; the node may not jump
   from its old to final position only after release.
+- React Flow owns transient pointer movement and edge repaint. Dragging never
+  dispatches image/workflow compute, and React result updates may not reset the
+  library's in-progress position.
 - Load Image follows the ComfyUI source-node pattern: browse/replace inside the
   node, drop an image file onto the node, or paste a copied image while the graph
   is active. The node shows the actual source thumbnail plus name and dimensions.
@@ -99,6 +106,11 @@ Pointer rules:
 - double-click empty canvas: general node search;
 - body widget/preview pointer input: never starts node drag or canvas pan.
 
+During resize, controls reflow to available width and image surfaces update their
+CSS bounds continuously without re-decoding or re-running the workflow. Images
+preserve aspect ratio with contain-fit unless the user explicitly selects another
+view mode. The authored size commits once at pointer release and round-trips.
+
 ## 5. Architecture amendment
 
 - `node-widget-schema` owns widget type, parameter socket type, key, fallback,
@@ -127,6 +139,11 @@ Pointer rules:
 - R1.12 Rebuild Load Image as a node-local source surface with browse/replace,
   image-file drop, clipboard image paste, actual thumbnail, metadata, validation,
   and shared asset import semantics.
+- R1.13 Remove automatic graph-preview effects and prove React Flow movement stays
+  smooth while all workflow workers remain idle until explicit Run.
+- R1.14 Make node contents container-responsive: preview/source/result surfaces
+  fill available node space during resize, controls reflow at narrow widths, and
+  resizing triggers no workflow compute.
 
 R1.7-R1.10 block R1 closure and user-facing M5 closure. Previously valid graph,
 persistence, numerical, worker, preview, and explicit-run evidence remains valid
@@ -152,3 +169,6 @@ unless a new parameter-edge execution test falsifies it.
 - Socket geometry is sampled outside each node border and remains visible and
   hit-testable. Load Image browse, drop, and clipboard paste each show real source
   pixels in-node and feed the same persisted asset/output pipeline.
+- Increasing Preview or Load Image bounds measurably increases its painted image
+  area during the pointer gesture; shrinking preserves usable controls, sockets,
+  aspect ratio, and stable hit targets without recomputation.

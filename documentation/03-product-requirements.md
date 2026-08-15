@@ -283,6 +283,11 @@ complete snapshot or the next complete snapshot, never a mixed project.
 - **NOD-015 P0:** A title drag must repaint the node continuously under the
   pointer. Only pointer release commits the authored position, revision, autosave,
   and one undo entry; cancel restores the starting position.
+- **NOD-016 P0:** Resizing must reallocate node content continuously. Preview,
+  source-thumbnail, swatch, and result surfaces consume available node width and
+  height, preserve their media aspect ratio, and grow/shrink with the frame.
+  Controls reflow within readable minimums. Resize itself dispatches no workflow
+  compute and commits one authored size on release.
 
 ### 7.4A Workflow execution and queue
 
@@ -305,8 +310,13 @@ complete snapshot or the next complete snapshot, never a mixed project.
   state; authored parameter/edge/asset changes invalidate only affected downstream
   identities.
 - **EXE-008 P0:** Autosave and draft preview never create a completed run record or
-  relabel stale results as current. Run completion never relabels unsaved authored
-  edits as saved.
+  relabel stale results as current. Authored edits do not dispatch workflow
+  evaluation at all; only explicit Run workflow/Run branch does. Run completion
+  never relabels unsaved authored edits as saved.
+- **EXE-009 P0:** Source-file sniffing and a Load Image node's own bounded thumbnail
+  may occur at import/replace time, but no downstream node, transform, analysis,
+  material, or output preview evaluates until an explicit Run command captures a
+  revision.
 
 ### 7.5 Load Image node
 

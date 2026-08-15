@@ -105,14 +105,8 @@ test('full and partial runs expose exact demanded branches and cache decisions',
     .getByLabel('Image output', { exact: true })
     .dragTo(previewNodes.nth(1).getByLabel('Image input'))
 
-  await expect(previewNodes.nth(0).getByRole('img')).toHaveAttribute(
-    'data-pixel-sample',
-    '255,0,0,255',
-  )
-  await expect(previewNodes.nth(1).getByRole('img')).toHaveAttribute(
-    'data-pixel-sample',
-    '0,255,0,255',
-  )
+  await expect(previewNodes.nth(0).getByRole('img')).toHaveCount(0)
+  await expect(previewNodes.nth(1).getByRole('img')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Run history' }).click()
   await expect(page.getByText('No workflow runs yet')).toBeVisible()
@@ -121,6 +115,14 @@ test('full and partial runs expose exact demanded branches and cache decisions',
   await page.getByRole('button', { name: 'Run workflow' }).click()
   const fullRun = page.locator('.run-history-row').first()
   await expect(fullRun.getByText('succeeded')).toBeVisible()
+  await expect(previewNodes.nth(0).getByRole('img')).toHaveAttribute(
+    'data-pixel-sample',
+    '255,0,0,255',
+  )
+  await expect(previewNodes.nth(1).getByRole('img')).toHaveAttribute(
+    'data-pixel-sample',
+    '0,255,0,255',
+  )
   await expect(fullRun).toHaveAttribute('data-target-outputs', /.+,.+/)
   await expect(fullRun).toHaveAttribute('data-demanded-nodes', /.+,.+,.+,.+/)
   const fullDemand = (await fullRun.getAttribute('data-demanded-nodes'))!.split(
@@ -189,6 +191,12 @@ test('interrupt retains a valid preview and stale runs cannot publish current ou
   await resizeNode
     .getByLabel('Output output')
     .dragTo(previewNode.getByLabel('Image input'))
+  await expect(previewNode.getByRole('img')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Run workflow' }).click()
+  await expect(
+    page.locator('.run-history-row').first().getByText('succeeded'),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Close run history' }).click()
   const priorCanvas = previewNode.getByRole('img', {
     name: 'Image preview, 256 by 256 pixels',
   })

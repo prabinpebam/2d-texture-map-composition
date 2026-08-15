@@ -136,8 +136,8 @@ requirements.
 Authoring and execution are separate systems:
 
 - Editing parameters marks the node and affected downstream branch dirty/stale.
-- Editing may compute a bounded local draft for immediate feedback, but it does
-  not create a completed workflow run or queue record.
+  It never evaluates the workflow. Existing completed results remain visible as
+  stale until the user invokes Run workflow or Run selected output.
 - Run workflow (`Ctrl+Enter`) validates the complete demanded output set, captures
   one immutable project revision, and enqueues a run.
 - Run selected output executes only the required upstream subgraph for that output.
@@ -171,7 +171,8 @@ flowchart LR
   validation, units, defaults, compact/advanced placement, and serialization keys.
 - `run-queue`: ephemeral ordered run records with bounded retained history;
   workflow JSON stores execution settings but not transient queue entries.
-- `scheduler-worker`: validates run snapshots, computes demanded output subgraphs,
+- `scheduler-worker`: accepts only explicit run requests, validates run snapshots,
+  computes demanded output subgraphs,
   publishes node execution events, and rejects stale completion by run/revision/
   node generation.
 - `result-registry`: owns the current and previous node-local bitmap/result handles
