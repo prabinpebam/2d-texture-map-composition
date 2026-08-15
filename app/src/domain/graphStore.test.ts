@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createGraphNode } from './graph'
 import { createGraphStore } from './graphStore'
 
 describe('graph command store', () => {
@@ -117,5 +118,18 @@ describe('graph command store', () => {
     ).toBe('duplicate-edge')
     expect(store.getState().document).toBe(before)
     expect(store.getState().connectionDiagnostic).toBe('duplicate-edge')
+  })
+
+  it('replaces an imported document as one undoable command', () => {
+    const store = createGraphStore()
+    const imported = {
+      nodes: [createGraphNode('light', 'imported', { x: 20, y: 30 }, 0)],
+      edges: [],
+    }
+    store.getState().replaceDocument(imported)
+    expect(store.getState().document).toBe(imported)
+
+    store.getState().undo()
+    expect(store.getState().document).toEqual({ nodes: [], edges: [] })
   })
 })

@@ -24,6 +24,7 @@ export interface GraphStoreState {
     edge: Omit<GraphEdge, 'id' | 'order'>,
     id?: string,
   ): ConnectionDiagnostic | null
+  replaceDocument(document: GraphDocument): void
   deleteSelected(): void
   undo(): void
   redo(): void
@@ -203,6 +204,16 @@ export function createGraphStore() {
         redoStack: [],
       })
       return null
+    },
+    replaceDocument(document) {
+      const state = get()
+      set({
+        document,
+        selectedNodeIds: [],
+        connectionDiagnostic: null,
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
     },
     deleteSelected() {
       const state = get()

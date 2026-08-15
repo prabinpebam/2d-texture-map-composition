@@ -360,3 +360,37 @@ test('user can connect compatible ports and sees invalid type feedback', async (
     contentType: 'image/png',
   })
 })
+
+test('user can download and import the authored graph workflow', async ({
+  context,
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Load image' }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Export workflow' }).click(),
+  ])
+  expect(download.suggestedFilename()).toBe('untitled.textureflow.json')
+  const downloadPath = await download.path()
+  expect(downloadPath).not.toBeNull()
+  await expect(page.getByText('Workflow downloaded')).toBeVisible()
+
+  const importedPage = await context.newPage()
+  await importedPage.goto('/')
+  await importedPage.getByLabel('Workflow file').setInputFiles(downloadPath!)
+  await expect(
+    importedPage.getByText('Imported 1 nodes and 0 edges'),
+  ).toBeVisible()
+  await expect(importedPage.getByLabel('Load image node')).toBeVisible()
+  await expect(importedPage.getByText('1 nodes', { exact: true })).toBeVisible()
+
+  const screenshotPath = testInfo.outputPath('m2-workflow-roundtrip.png')
+  await importedPage.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m2-workflow-roundtrip', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})

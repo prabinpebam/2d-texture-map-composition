@@ -61,6 +61,10 @@ import {
 } from './app/storageReadiness'
 import { useGraphStore } from './app/graphState'
 import { NODE_TYPE_REGISTRY } from './domain/graph'
+import {
+  parseGraphWorkflow,
+  serializeGraphWorkflow,
+} from './app/graphWorkflowBoundary'
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
   input: 'Inputs',
@@ -98,6 +102,7 @@ function App() {
     PersistenceProbeResult | { error: string } | 'checking' | 'unavailable'
   >(() => (capabilities.indexedDb ? 'checking' : 'unavailable'))
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  const [workflowNotice, setWorkflowNotice] = useState<string | null>(null)
   const graphDocument = useGraphStore((state) => state.document)
   const selectedNodeIds = useGraphStore((state) => state.selectedNodeIds)
   const undoStack = useGraphStore((state) => state.undoStack)
@@ -116,6 +121,7 @@ function App() {
     (state) => state.toggleSelectedState,
   )
   const connectNodes = useGraphStore((state) => state.connectNodes)
+  const replaceDocument = useGraphStore((state) => state.replaceDocument)
   const undo = useGraphStore((state) => state.undo)
   const redo = useGraphStore((state) => state.redo)
 
@@ -126,6 +132,7 @@ function App() {
   const statusRef = useRef<HTMLElement>(null)
   const computeStatusRef = useRef<HTMLButtonElement>(null)
   const diagnosticsCloseRef = useRef<HTMLButtonElement>(null)
+  const workflowInputRef = useRef<HTMLInputElement>(null)
 
   const ThemeIcon = THEME_ICONS[theme]
   const nextThemeValue = nextTheme(theme)
@@ -300,6 +307,35 @@ function App() {
     requestAnimationFrame(() => computeStatusRef.current?.focus())
   }
 
+  function downloadWorkflow() {
+    const json = serializeGraphWorkflow(graphDocument, {
+      id: 'untitled-workflow',
+      name: 'Untitled workflow',
+      viewport: { x: 0, y: 0, zoom: 1 },
+    })
+    const url = URL.createObjectURL(
+      new Blob([json], { type: 'application/vnd.textureflow.workflow+json' }),
+    )
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'untitled.textureflow.json'
+    link.click()
+    URL.revokeObjectURL(url)
+    setWorkflowNotice('Workflow downloaded')
+  }
+
+  async function importWorkflow(file: File) {
+    const result = parseGraphWorkflow(await file.text())
+    if (!result.ok) {
+      setWorkflowNotice(`Import rejected: ${result.error}`)
+      return
+    }
+    replaceDocument(result.document)
+    setWorkflowNotice(
+      `Imported ${result.document.nodes.length} nodes and ${result.document.edges.length} edges`,
+    )
+  }
+
   return (
     <div className="workspace" data-theme={theme}>
       <header className="app-bar" ref={appBarRef} tabIndex={-1}>
@@ -340,10 +376,30 @@ function App() {
             <Redo2 aria-hidden="true" size={17} />
           </IconButton>
           <span className="toolbar-separator" aria-hidden="true" />
-          <IconButton disabled label="Import images">
+          <IconButton
+            label="Import workflow"
+            onClick={() => workflowInputRef.current?.click()}
+          >
             <Upload aria-hidden="true" size={17} />
           </IconButton>
-          <IconButton disabled label="Export workflow">
+          <input
+            accept=".json,.textureflow.json,application/json,application/vnd.textureflow.workflow+json"
+            aria-label="Workflow file"
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) void importWorkflow(file)
+              event.target.value = ''
+            }}
+            ref={workflowInputRef}
+            tabIndex={-1}
+            type="file"
+          />
+          <IconButton
+            disabled={graphDocument.nodes.length === 0}
+            label="Export workflow"
+            onClick={downloadWorkflow}
+          >
             <Download aria-hidden="true" size={17} />
           </IconButton>
           <IconButton
@@ -634,6 +690,11 @@ function App() {
           </span>
         </div>
         <div className="status-group">
+          {workflowNotice ? (
+            <span className="status-item" role="status">
+              {workflowNotice}
+            </span>
+          ) : null}
           {connectionDiagnostic ? (
             <span className="status-item connection-warning" role="status">
               Connection rejected: {connectionDiagnostic.replaceAll('-', ' ')}
