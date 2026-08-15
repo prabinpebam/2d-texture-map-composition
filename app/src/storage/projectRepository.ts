@@ -10,6 +10,7 @@ export interface ProjectRecord {
   schemaVersion: 1
   appVersion: string
   persistent: boolean
+  trashedAt?: number
 }
 
 export interface SnapshotRecord {
@@ -149,8 +150,14 @@ export class ProjectRepository {
     return project
   }
 
-  async listProjects(): Promise<ProjectRecord[]> {
-    return this.database.projects.orderBy('modifiedAt').reverse().toArray()
+  async listProjects(includeTrashed = false): Promise<ProjectRecord[]> {
+    const projects = await this.database.projects
+      .orderBy('modifiedAt')
+      .reverse()
+      .toArray()
+    return includeTrashed
+      ? projects
+      : projects.filter((project) => project.trashedAt === undefined)
   }
 
   async renameProject(projectId: string, name: string): Promise<void> {
@@ -189,6 +196,22 @@ export class ProjectRepository {
         await this.database.projects.delete(projectId)
       },
     )
+  }
+
+  async trashProject(projectId: string): Promise<void> {
+    const updated = await this.database.projects.update(projectId, {
+      trashedAt: Date.now(),
+      modifiedAt: Date.now(),
+    })
+    if (updated === 0) throw new Error(`Unknown project: ${projectId}`)
+  }
+
+  async restoreProject(projectId: string): Promise<void> {
+    const updated = await this.database.projects.update(projectId, {
+      trashedAt: undefined,
+      modifiedAt: Date.now(),
+    })
+    if (updated === 0) throw new Error(`Unknown project: ${projectId}`)
   }
 
   async saveSnapshot(

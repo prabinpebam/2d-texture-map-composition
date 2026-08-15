@@ -74,9 +74,12 @@ import { NODE_TYPE_REGISTRY } from './domain/graph'
 import { serializeGraphWorkflow } from './app/graphWorkflowExport'
 import {
   createLocalProject,
+  createLocalProjectCopy,
   deleteLocalProject,
   listLocalProjects,
   renameLocalProject,
+  restoreLocalProject,
+  trashLocalProject,
   useProjectPersistence,
 } from './app/projectPersistence'
 
@@ -1044,13 +1047,31 @@ function App() {
         </div>
         <div className="status-group">
           {projectPersistence.access === 'read-only' ? (
-            <button
-              className="status-item status-action connection-warning"
-              onClick={() => void projectPersistence.takeOver()}
-              type="button"
-            >
-              Read-only · Take over
-            </button>
+            <>
+              <button
+                className="status-item status-action"
+                onClick={() => {
+                  void createLocalProjectCopy(
+                    `${activeProject.name} copy`,
+                    graphDocument,
+                  ).then((project) => {
+                    setActiveProject({ id: project.id, name: project.name })
+                    setSelectedTemplate(null)
+                    setWorkflowNotice('Opened an independent project copy')
+                  })
+                }}
+                type="button"
+              >
+                Read-only · Open copy
+              </button>
+              <button
+                className="status-item status-action connection-warning"
+                onClick={() => void projectPersistence.takeOver()}
+                type="button"
+              >
+                Read-only · Take over
+              </button>
+            </>
           ) : null}
           {workflowNotice ? (
             <span className="status-item" role="status">
@@ -1282,6 +1303,14 @@ function App() {
             if (projectId === activeProject.id) {
               setActiveProject((current) => ({ ...current, name: name.trim() }))
             }
+            await refreshLocalProjects()
+          }}
+          onRestore={async (projectId) => {
+            await restoreLocalProject(projectId)
+            await refreshLocalProjects()
+          }}
+          onTrash={async (projectId) => {
+            await trashLocalProject(projectId)
             await refreshLocalProjects()
           }}
           projects={localProjects}

@@ -6,9 +6,12 @@ import { graphStore } from './app/graphState'
 
 vi.mock('./app/projectPersistence', () => ({
   createLocalProject: vi.fn(),
+  createLocalProjectCopy: vi.fn(),
   deleteLocalProject: vi.fn(),
   listLocalProjects: vi.fn(async () => []),
   renameLocalProject: vi.fn(),
+  restoreLocalProject: vi.fn(),
+  trashLocalProject: vi.fn(),
   useProjectPersistence: () => ({
     status: 'saved',
     access: 'writer',

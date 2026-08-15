@@ -7,6 +7,7 @@ export interface LocalProjectSummary {
   name: string
   revision: number
   modifiedAt: number
+  trashedAt?: number
 }
 
 interface ProjectBrowserDialogProps {
@@ -17,6 +18,8 @@ interface ProjectBrowserDialogProps {
   onDelete(projectId: string): Promise<void>
   onOpen(project: LocalProjectSummary): void
   onRename(projectId: string, name: string): Promise<void>
+  onRestore(projectId: string): Promise<void>
+  onTrash(projectId: string): Promise<void>
 }
 
 export function ProjectBrowserDialog({
@@ -27,6 +30,8 @@ export function ProjectBrowserDialog({
   onDelete,
   onOpen,
   onRename,
+  onRestore,
+  onTrash,
 }: ProjectBrowserDialogProps) {
   const newProjectRef = useRef<HTMLInputElement>(null)
   const [newProjectName, setNewProjectName] = useState('')
@@ -93,6 +98,7 @@ export function ProjectBrowserDialog({
         <div className="project-list">
           {projects.map((project) => {
             const active = project.id === activeProjectId
+            const trashed = project.trashedAt !== undefined
             return (
               <div className="project-row" key={project.id}>
                 <div>
@@ -109,19 +115,19 @@ export function ProjectBrowserDialog({
                   />
                   <span>
                     Revision {project.revision} ·{' '}
-                    {active ? 'Open now' : 'Local'}
+                    {trashed ? 'Trash' : active ? 'Open now' : 'Local'}
                   </span>
                 </div>
                 <div className="project-row-actions">
                   <IconButton
-                    disabled={active}
+                    disabled={active || trashed}
                     label={`Open ${project.name}`}
                     onClick={() => onOpen(project)}
                   >
                     <FolderOpen aria-hidden="true" size={16} />
                   </IconButton>
                   <IconButton
-                    disabled={!(names[project.id] ?? '').trim()}
+                    disabled={trashed || !(names[project.id] ?? '').trim()}
                     label={`Save name for ${project.name}`}
                     onClick={() =>
                       void onRename(
@@ -132,13 +138,30 @@ export function ProjectBrowserDialog({
                   >
                     <Check aria-hidden="true" size={16} />
                   </IconButton>
-                  <IconButton
-                    disabled={active}
-                    label={`Delete ${project.name}`}
-                    onClick={() => void onDelete(project.id)}
-                  >
-                    <Trash2 aria-hidden="true" size={16} />
-                  </IconButton>
+                  {trashed ? (
+                    <>
+                      <IconButton
+                        label={`Restore ${project.name}`}
+                        onClick={() => void onRestore(project.id)}
+                      >
+                        <Check aria-hidden="true" size={16} />
+                      </IconButton>
+                      <IconButton
+                        label={`Delete permanently ${project.name}`}
+                        onClick={() => void onDelete(project.id)}
+                      >
+                        <Trash2 aria-hidden="true" size={16} />
+                      </IconButton>
+                    </>
+                  ) : (
+                    <IconButton
+                      disabled={active}
+                      label={`Move ${project.name} to trash`}
+                      onClick={() => void onTrash(project.id)}
+                    >
+                      <Trash2 aria-hidden="true" size={16} />
+                    </IconButton>
+                  )}
                 </div>
               </div>
             )

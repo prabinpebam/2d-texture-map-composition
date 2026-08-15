@@ -353,7 +353,7 @@ export function useProjectPersistence(
 }
 
 export function listLocalProjects() {
-  return repository.listProjects()
+  return repository.listProjects(true)
 }
 
 export async function createLocalProject(name: string) {
@@ -370,4 +370,25 @@ export async function renameLocalProject(projectId: string, name: string) {
 export async function deleteLocalProject(projectId: string) {
   await repository.deleteProject(projectId)
   initializationPromises.delete(projectId)
+}
+
+export async function trashLocalProject(projectId: string) {
+  await repository.trashProject(projectId)
+  initializationPromises.delete(projectId)
+}
+
+export async function restoreLocalProject(projectId: string) {
+  await repository.restoreProject(projectId)
+  initializationPromises.delete(projectId)
+}
+
+export async function createLocalProjectCopy(
+  name: string,
+  document: GraphDocument,
+) {
+  const project = await repository.createProject(crypto.randomUUID(), name)
+  const workflowJson = serialize(document, project.id, project.name)
+  await repository.saveSnapshot(project.id, workflowJson)
+  initializationPromises.delete(project.id)
+  return project
 }

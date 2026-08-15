@@ -242,6 +242,110 @@ test('repository verifies checkpoints reclaims previews and arbitrates expiring 
   })
 })
 
+test('IndexedDB v1 data migrates to v2 without losing authored records', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  const evidence = await page.evaluate(async () => {
+    const databaseName = `textureflow-migration-${crypto.randomUUID()}`
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(databaseName, 1)
+      request.onerror = () => reject(request.error)
+      request.onupgradeneeded = () => {
+        const database = request.result
+        const projects = database.createObjectStore('projects', {
+          keyPath: 'id',
+        })
+        projects.createIndex('modifiedAt', 'modifiedAt')
+        projects.createIndex('name', 'name')
+        const snapshots = database.createObjectStore('snapshots', {
+          keyPath: 'id',
+        })
+        snapshots.createIndex('[projectId+revision]', ['projectId', 'revision'])
+        snapshots.createIndex('projectId', 'projectId')
+        snapshots.createIndex('revision', 'revision')
+        const assets = database.createObjectStore('assets', {
+          keyPath: 'digest',
+        })
+        assets.createIndex('createdAt', 'createdAt')
+        const projectAssets = database.createObjectStore('projectAssets', {
+          keyPath: ['projectId', 'digest'],
+        })
+        projectAssets.createIndex('projectId', 'projectId')
+        projectAssets.createIndex('digest', 'digest')
+        const checkpoints = database.createObjectStore('checkpoints', {
+          keyPath: 'projectId',
+        })
+        checkpoints.createIndex('revision', 'revision')
+        const leases = database.createObjectStore('leases', {
+          keyPath: 'projectId',
+        })
+        leases.createIndex('expiresAt', 'expiresAt')
+
+        const now = Date.now()
+        projects.add({
+          id: 'legacy-project',
+          name: 'Legacy project',
+          currentSnapshotId: 'legacy-snapshot',
+          revision: 1,
+          createdAt: now,
+          modifiedAt: now,
+          schemaVersion: 1,
+          appVersion: '0.1.0',
+          persistent: false,
+        })
+        snapshots.add({
+          id: 'legacy-snapshot',
+          projectId: 'legacy-project',
+          parentId: null,
+          revision: 1,
+          workflowJson: new Blob(['{"legacy":true}']),
+          sha256: 'legacy-digest',
+          createdAt: now,
+          complete: true,
+        })
+      }
+      request.onsuccess = () => {
+        request.result.close()
+        resolve()
+      }
+    })
+
+    const moduleUrl = '/src/storage/projectRepository.ts'
+    const { TextureFlowDatabase } = await import(moduleUrl)
+    const database = new TextureFlowDatabase(databaseName)
+    try {
+      await database.open()
+      return {
+        version: database.verno,
+        stores: database.tables.map((table) => table.name).sort(),
+        project: await database.projects.get('legacy-project'),
+        snapshotExists: Boolean(
+          await database.snapshots.get('legacy-snapshot'),
+        ),
+      }
+    } finally {
+      database.close()
+      await database.delete()
+    }
+  })
+
+  expect(evidence.version).toBe(2)
+  expect(evidence.stores).toContain('previews')
+  expect(evidence.stores).toContain('settings')
+  expect(evidence.project).toMatchObject({
+    id: 'legacy-project',
+    name: 'Legacy project',
+    revision: 1,
+    currentSnapshotId: 'legacy-snapshot',
+  })
+  expect(evidence.snapshotExists).toBe(true)
+  await testInfo.attach('m3-schema-migration-evidence', {
+    body: JSON.stringify(evidence, null, 2),
+    contentType: 'application/json',
+  })
+})
+
 test('pagehide checkpoint restores newer draft and quota retry reclaims previews', async ({
   page,
 }, testInfo) => {
@@ -587,7 +691,14 @@ test('user creates renames deletes and reopens isolated local projects', async (
 
   await browser.getByLabel('New project name').fill('Delete me')
   await browser.getByRole('button', { name: 'Create' }).click()
-  await browser.getByRole('button', { name: 'Delete Delete me' }).click()
+  await browser.getByRole('button', { name: 'Move Delete me to trash' }).click()
+  await expect(browser.getByText('Revision 0 · Trash')).toBeVisible()
+  await browser.getByRole('button', { name: 'Restore Delete me' }).click()
+  await expect(browser.getByText('Revision 0 · Local')).toBeVisible()
+  await browser.getByRole('button', { name: 'Move Delete me to trash' }).click()
+  await browser
+    .getByRole('button', { name: 'Delete permanently Delete me' })
+    .click()
   await expect(
     browser.getByLabel('Name for Delete me', { exact: true }),
   ).toBeHidden()
@@ -644,6 +755,76 @@ test('second tab opens read-only and takes over after owner closes', async ({
   const screenshotPath = testInfo.outputPath('m3-read-only-takeover.png')
   await secondPage.screenshot({ fullPage: true, path: screenshotPath })
   await testInfo.attach('m3-read-only-takeover', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('read-only tab opens an isolated writable project copy', async ({
+  context,
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Save project' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Load image' }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+  await page.getByRole('button', { name: 'Save project' }).click()
+  await expectSnapshotContains(page, 'untitled-workflow', 'load-image')
+
+  const copyPage = await context.newPage()
+  await copyPage.goto('/')
+  await expect(copyPage.getByText('Read-only in another tab')).toBeVisible()
+  await expect(copyPage.getByLabel('Load image node')).toBeVisible()
+  await copyPage.getByRole('button', { name: 'Read-only · Open copy' }).click()
+
+  await expect(
+    copyPage.getByRole('button', {
+      name: 'Untitled workflow copy',
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    copyPage.getByText('Opened an independent project copy'),
+  ).toBeVisible()
+  await expect(
+    copyPage.getByRole('button', { name: 'Save project' }),
+  ).toBeEnabled()
+  await expect(copyPage.getByLabel('Load image node')).toBeVisible()
+  await expect(
+    copyPage.getByRole('button', { name: 'Read-only · Take over' }),
+  ).toBeHidden()
+
+  const copiedProject = await copyPage.evaluate(async () => {
+    const moduleUrl = '/src/storage/projectRepository.ts'
+    const { TextureFlowDatabase } = await import(moduleUrl)
+    const database = new TextureFlowDatabase('textureflow')
+    try {
+      const project = await database.projects
+        .where('name')
+        .equals('Untitled workflow copy')
+        .first()
+      const snapshot = project?.currentSnapshotId
+        ? await database.snapshots.get(project.currentSnapshotId)
+        : null
+      const workflow = snapshot
+        ? (JSON.parse(await snapshot.workflowJson.text()) as {
+            project: { id: string }
+          })
+        : null
+      return {
+        projectId: project?.id,
+        workflowProjectId: workflow?.project.id,
+      }
+    } finally {
+      database.close()
+    }
+  })
+  expect(copiedProject.projectId).toBeTruthy()
+  expect(copiedProject.workflowProjectId).toBe(copiedProject.projectId)
+
+  const screenshotPath = testInfo.outputPath('m3-open-copy.png')
+  await copyPage.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m3-open-copy', {
     path: screenshotPath,
     contentType: 'image/png',
   })
