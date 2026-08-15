@@ -5,6 +5,8 @@ import {
   BoxSelect,
   ChevronDown,
   CircleGauge,
+  CircleSlash2,
+  Copy,
   Download,
   Eye,
   HardDrive,
@@ -26,6 +28,7 @@ import {
   Trash2,
   Undo2,
   Upload,
+  VolumeX,
   X,
 } from 'lucide-react'
 import {
@@ -103,6 +106,12 @@ function App() {
   const selectNode = useGraphStore((state) => state.selectNode)
   const clearSelection = useGraphStore((state) => state.clearSelection)
   const deleteSelected = useGraphStore((state) => state.deleteSelected)
+  const moveNode = useGraphStore((state) => state.moveNode)
+  const moveSelectedBy = useGraphStore((state) => state.moveSelectedBy)
+  const duplicateSelected = useGraphStore((state) => state.duplicateSelected)
+  const toggleSelectedState = useGraphStore(
+    (state) => state.toggleSelectedState,
+  )
   const undo = useGraphStore((state) => state.undo)
   const redo = useGraphStore((state) => state.redo)
 
@@ -130,6 +139,9 @@ function App() {
         summary: definition.summary,
         inputs: definition.inputs,
         outputs: definition.outputs,
+        bypassed: node.bypassed,
+        muted: node.muted,
+        locked: node.locked,
       },
       style: { width: node.size.width, minHeight: node.size.height },
     }
@@ -162,6 +174,56 @@ function App() {
     document.addEventListener('keydown', handleRegionNavigation)
     return () => document.removeEventListener('keydown', handleRegionNavigation)
   }, [])
+
+  useEffect(() => {
+    function handleGraphCommands(event: globalThis.KeyboardEvent) {
+      if (!graphRef.current?.contains(document.activeElement)) return
+      if (
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+
+      const step = event.shiftKey ? 10 : 1
+      if (event.altKey && event.key.startsWith('Arrow')) {
+        event.preventDefault()
+        const delta = {
+          x:
+            event.key === 'ArrowLeft'
+              ? -step
+              : event.key === 'ArrowRight'
+                ? step
+                : 0,
+          y:
+            event.key === 'ArrowUp'
+              ? -step
+              : event.key === 'ArrowDown'
+                ? step
+                : 0,
+        }
+        moveSelectedBy(delta)
+        return
+      }
+      if (event.key === 'Delete') {
+        event.preventDefault()
+        deleteSelected()
+        return
+      }
+      if (event.ctrlKey && event.shiftKey) {
+        const command = event.key.toLowerCase()
+        if (command === 'b' || command === 'm' || command === 'l') {
+          event.preventDefault()
+          toggleSelectedState(
+            command === 'b' ? 'bypassed' : command === 'm' ? 'muted' : 'locked',
+          )
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleGraphCommands)
+    return () => document.removeEventListener('keydown', handleGraphCommands)
+  }, [deleteSelected, moveSelectedBy, toggleSelectedState])
 
   useEffect(() => {
     if (!capabilities.workers) return
@@ -279,6 +341,34 @@ function App() {
           >
             <Trash2 aria-hidden="true" size={17} />
           </IconButton>
+          <IconButton
+            disabled={selectedNodeIds.length === 0}
+            label="Duplicate selected nodes"
+            onClick={() => duplicateSelected()}
+          >
+            <Copy aria-hidden="true" size={17} />
+          </IconButton>
+          <IconButton
+            disabled={selectedNodeIds.length === 0}
+            label="Toggle bypass for selected nodes"
+            onClick={() => toggleSelectedState('bypassed')}
+          >
+            <CircleSlash2 aria-hidden="true" size={17} />
+          </IconButton>
+          <IconButton
+            disabled={selectedNodeIds.length === 0}
+            label="Toggle mute for selected nodes"
+            onClick={() => toggleSelectedState('muted')}
+          >
+            <VolumeX aria-hidden="true" size={17} />
+          </IconButton>
+          <IconButton
+            disabled={selectedNodeIds.length === 0}
+            label="Toggle lock for selected nodes"
+            onClick={() => toggleSelectedState('locked')}
+          >
+            <LockKeyhole aria-hidden="true" size={17} />
+          </IconButton>
           <span className="toolbar-separator" aria-hidden="true" />
           <IconButton
             label={`Theme: ${theme}. Switch to ${nextThemeValue}`}
@@ -366,6 +456,7 @@ function App() {
             nodeTypes={NODE_TYPES}
             nodes={flowNodes}
             onNodeClick={(event, node) => selectNode(node.id, event.shiftKey)}
+            onNodeDragStop={(_, node) => moveNode(node.id, node.position)}
             onPaneClick={clearSelection}
           >
             <Background

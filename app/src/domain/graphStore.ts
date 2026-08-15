@@ -9,12 +9,21 @@ export interface GraphStoreState {
   addNode(type: string, position: { x: number; y: number }, id?: string): string
   selectNode(id: string, additive?: boolean): void
   clearSelection(): void
+  moveNode(id: string, position: { x: number; y: number }): void
+  moveSelectedBy(delta: { x: number; y: number }): void
+  duplicateSelected(createId?: () => string): readonly string[]
+  toggleSelectedState(state: 'bypassed' | 'muted' | 'locked'): void
   deleteSelected(): void
   undo(): void
   redo(): void
 }
 
 const EMPTY_DOCUMENT: GraphDocument = { nodes: [], edges: [] }
+const BYPASS_DISABLED_TYPES = new Set([
+  'load-image',
+  'light',
+  'representative-color',
+])
 
 function nextNodeId(): string {
   return `node-${crypto.randomUUID()}`
@@ -64,24 +73,125 @@ export function createGraphStore() {
     clearSelection() {
       set({ selectedNodeIds: [] })
     },
+    moveNode(id, position) {
+      const state = get()
+      const node = state.document.nodes.find((candidate) => candidate.id === id)
+      if (
+        !node ||
+        node.locked ||
+        (node.position.x === position.x && node.position.y === position.y)
+      ) {
+        return
+      }
+      set({
+        document: {
+          ...state.document,
+          nodes: state.document.nodes.map((candidate) =>
+            candidate.id === id ? { ...candidate, position } : candidate,
+          ),
+        },
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+    },
+    moveSelectedBy(delta) {
+      const state = get()
+      const selected = new Set(state.selectedNodeIds)
+      const movable = state.document.nodes.filter(
+        (node) => selected.has(node.id) && !node.locked,
+      )
+      if (movable.length === 0 || (delta.x === 0 && delta.y === 0)) return
+      set({
+        document: {
+          ...state.document,
+          nodes: state.document.nodes.map((node) =>
+            selected.has(node.id) && !node.locked
+              ? {
+                  ...node,
+                  position: {
+                    x: node.position.x + delta.x,
+                    y: node.position.y + delta.y,
+                  },
+                }
+              : node,
+          ),
+        },
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+    },
+    duplicateSelected(createId = nextNodeId) {
+      const state = get()
+      const selected = new Set(state.selectedNodeIds)
+      const copies = state.document.nodes
+        .filter((node) => selected.has(node.id))
+        .map((node, index) => ({
+          ...node,
+          id: createId(),
+          position: {
+            x: node.position.x + node.size.width + 24,
+            y: node.position.y,
+          },
+          zIndex: state.document.nodes.length + index,
+        }))
+      if (copies.length === 0) return []
+      const copyIds = copies.map((node) => node.id)
+      set({
+        document: {
+          ...state.document,
+          nodes: [...state.document.nodes, ...copies],
+        },
+        selectedNodeIds: copyIds,
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+      return copyIds
+    },
+    toggleSelectedState(authoredState) {
+      const state = get()
+      const selected = new Set(state.selectedNodeIds)
+      const eligible = state.document.nodes.filter(
+        (node) =>
+          selected.has(node.id) &&
+          (authoredState !== 'bypassed' ||
+            !BYPASS_DISABLED_TYPES.has(node.type)),
+      )
+      if (eligible.length === 0) return
+      const nextValue = !eligible.every((node) => node[authoredState])
+      const eligibleIds = new Set(eligible.map((node) => node.id))
+      set({
+        document: {
+          ...state.document,
+          nodes: state.document.nodes.map((node) =>
+            eligibleIds.has(node.id)
+              ? { ...node, [authoredState]: nextValue }
+              : node,
+          ),
+        },
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+    },
     deleteSelected() {
       const state = get()
       if (state.selectedNodeIds.length === 0) return
       const selected = new Set(state.selectedNodeIds)
+      const deleted = new Set(
+        state.document.nodes
+          .filter((node) => selected.has(node.id) && !node.locked)
+          .map((node) => node.id),
+      )
+      if (deleted.size === 0) return
       const nextDocument: GraphDocument = {
-        nodes: state.document.nodes.filter(
-          (node) => !selected.has(node.id) || node.locked,
-        ),
+        nodes: state.document.nodes.filter((node) => !deleted.has(node.id)),
         edges: state.document.edges.filter(
           (edge) =>
-            !selected.has(edge.sourceNodeId) &&
-            !selected.has(edge.targetNodeId),
+            !deleted.has(edge.sourceNodeId) && !deleted.has(edge.targetNodeId),
         ),
       }
-      if (nextDocument.nodes.length === state.document.nodes.length) return
       set({
         document: nextDocument,
-        selectedNodeIds: [],
+        selectedNodeIds: state.selectedNodeIds.filter((id) => !deleted.has(id)),
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
       })

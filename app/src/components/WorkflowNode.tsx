@@ -5,17 +5,29 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   summary: string
   inputs: readonly { id: string; label: string }[]
   outputs: readonly { id: string; label: string }[]
+  bypassed: boolean
+  muted: boolean
+  locked: boolean
 }
 
 export type WorkflowFlowNode = Node<WorkflowNodeData, 'workflow'>
 
 export function WorkflowNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
+  const state = data.locked
+    ? 'Locked'
+    : data.muted
+      ? 'Muted'
+      : data.bypassed
+        ? 'Bypassed'
+        : 'Ready'
   return (
-    <div className={`workflow-node${selected ? ' selected' : ''}`}>
+    <div
+      className={`workflow-node${selected ? ' selected' : ''}${data.locked ? ' locked' : ''}${data.muted ? ' muted' : ''}${data.bypassed ? ' bypassed' : ''}`}
+    >
       <div className="workflow-node-header">
         <span className="workflow-node-mark" aria-hidden="true" />
         <strong>{data.label}</strong>
-        <span className="workflow-node-state">Ready</span>
+        <span className="workflow-node-state">{state}</span>
       </div>
       <p>{data.summary}</p>
       <div className="workflow-node-ports">

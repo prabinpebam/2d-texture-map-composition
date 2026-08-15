@@ -259,3 +259,52 @@ test('user can add delete and restore a graph node', async ({
   await expect(page.getByLabel('Load image node')).toBeVisible()
   await expect(page.getByText('1 nodes')).toBeVisible()
 })
+
+test('keyboard user can move lock and duplicate a node', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Resize' }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+
+  const node = page.getByLabel('Resize node')
+  await node.focus()
+  const initialBounds = await node.boundingBox()
+  await page.keyboard.press('Alt+Shift+ArrowRight')
+  const movedBounds = await node.boundingBox()
+  expect(initialBounds).not.toBeNull()
+  expect(movedBounds).not.toBeNull()
+  expect(movedBounds!.x - initialBounds!.x).toBeCloseTo(10, 0)
+
+  await page.keyboard.press('Control+Shift+M')
+  await expect(node.getByText('Muted')).toBeVisible()
+  await page.keyboard.press('Control+Shift+L')
+  await expect(node.getByText('Locked')).toBeVisible()
+
+  const lockedBounds = await node.boundingBox()
+  await page.keyboard.press('Alt+Shift+ArrowRight')
+  const afterLockedMove = await node.boundingBox()
+  expect(afterLockedMove!.x).toBeCloseTo(lockedBounds!.x, 1)
+
+  await page
+    .getByRole('button', { name: 'Toggle lock for selected nodes' })
+    .click()
+  await page.getByRole('button', { name: 'Duplicate selected nodes' }).click()
+  const nodes = page.getByLabel('Resize node')
+  await expect(nodes).toHaveCount(2)
+  await expect(page.getByText('2 nodes')).toBeVisible()
+  const originalBounds = await nodes.nth(0).boundingBox()
+  const duplicateBounds = await nodes.nth(1).boundingBox()
+  expect(originalBounds).not.toBeNull()
+  expect(duplicateBounds).not.toBeNull()
+  expect(originalBounds!.x + originalBounds!.width).toBeLessThanOrEqual(
+    duplicateBounds!.x,
+  )
+
+  const screenshotPath = testInfo.outputPath('m2-node-commands.png')
+  await page.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m2-node-commands', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})

@@ -520,6 +520,24 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+.workflow-node.locked {
+  border-style: double;
+}
+
+.workflow-node.muted {
+  opacity: 0.58;
+}
+
+.workflow-node.bypassed {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 8px,
+    color-mix(in srgb, var(--text-2) 6%, transparent) 8px,
+    color-mix(in srgb, var(--text-2) 6%, transparent) 10px
+  );
+}
+
 .workflow-node-header {
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr) auto;
