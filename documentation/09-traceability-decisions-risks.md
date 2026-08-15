@@ -87,8 +87,8 @@ No actionable seed statement is intentionally unmapped.
 | DEC-008 | Accepted | Graph is one keyboard composite with non-drag dialogs. | Large-graph usability and WCAG 2.2 dragging requirement. |
 | DEC-009 | Accepted | Requested Ctrl shortcuts are best-effort plus reliable UI/remappable alternates. | Browser-reserved shortcuts cannot be a sole contract. |
 | DEC-010 | Provisional | Plain JSON references assets; future package may embed them. | Avoid huge base64 JSON; reopen before M9 after packaging prototype. |
-| DEC-011 | Blocked visual only | Exact HSL picker visuals wait for approved design source. | Exact similarity cannot be derived from absent evidence. |
-| DEC-012 | Spike pending | TIFF implementation/capabilities depend on codec evidence. | No browser-native TIFF encoding contract. |
+| DEC-011 | Blocked visual only | Exact HSL picker visuals wait for approved design source. | SPIKE-008 found no approved source; exact similarity cannot be derived from absent evidence. |
+| DEC-012 | Rejected pending replacement | TIFF remains hidden because no managed-feed candidate proves maintained 8/16-bit RGBA browser encoding. | SPIKE-001 and ADR-005. |
 | DEC-013 | Accepted | Validation loops are mandatory Playwright UX evaluations that open the actual app and prove the intended user task, not functional code test loops. | Prevents unit/build/DOM-only evidence from closing user-experience outcomes. |
 
 ## 5. Risk Register
@@ -140,7 +140,7 @@ failure behavior.
 - [x] Implementation milestones are dependency ordered with objective exit evidence.
 - [x] Actual-app Playwright UX evaluation is a mandatory milestone and release gate.
 - [ ] HSL picker design source obtained and mapped.
-- [ ] Implementation spikes executed and ADRs finalized.
+- [x] M1 implementation spikes executed and ADR dispositions finalized.
 - [ ] Implementation and release evidence produced.
 
 The unchecked items are intentionally implementation-phase outcomes. They do not

@@ -24,6 +24,7 @@ import {
   SunMedium,
   Undo2,
   Upload,
+  X,
 } from 'lucide-react'
 import {
   Background,
@@ -48,6 +49,10 @@ import {
   probeComputeBackend,
   type ComputeProbeResult,
 } from './app/computeReadiness'
+import {
+  runPersistenceProbe,
+  type PersistenceProbeResult,
+} from './app/storageReadiness'
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
   input: 'Inputs',
@@ -79,12 +84,18 @@ function App() {
   const [computeProbe, setComputeProbe] = useState<
     ComputeProbeResult | 'checking' | 'unavailable'
   >(() => (capabilities.workers ? 'checking' : 'unavailable'))
+  const [persistenceProbe, setPersistenceProbe] = useState<
+    PersistenceProbeResult | { error: string } | 'checking' | 'unavailable'
+  >(() => (capabilities.indexedDb ? 'checking' : 'unavailable'))
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
 
   const appBarRef = useRef<HTMLElement>(null)
   const libraryRef = useRef<HTMLElement>(null)
   const graphRef = useRef<HTMLElement>(null)
   const inspectorRef = useRef<HTMLElement>(null)
   const statusRef = useRef<HTMLElement>(null)
+  const computeStatusRef = useRef<HTMLButtonElement>(null)
+  const diagnosticsCloseRef = useRef<HTMLButtonElement>(null)
 
   const ThemeIcon = THEME_ICONS[theme]
   const nextThemeValue = nextTheme(theme)
@@ -129,6 +140,53 @@ function App() {
       active = false
     }
   }, [capabilities.workers])
+
+  useEffect(() => {
+    if (!capabilities.indexedDb) return
+
+    let active = true
+    void runPersistenceProbe()
+      .then((result) => {
+        if (active) setPersistenceProbe(result)
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setPersistenceProbe({
+            error:
+              error instanceof Error
+                ? `${error.name}: ${error.message}`
+                : 'Unknown persistence probe failure',
+          })
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [capabilities.indexedDb])
+
+  useEffect(() => {
+    if (!diagnosticsOpen) return
+    diagnosticsCloseRef.current?.focus()
+
+    function handleDialogKeyboard(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        diagnosticsCloseRef.current?.focus()
+        return
+      }
+      if (event.key === 'Escape') {
+        setDiagnosticsOpen(false)
+        requestAnimationFrame(() => computeStatusRef.current?.focus())
+      }
+    }
+    document.addEventListener('keydown', handleDialogKeyboard)
+    return () => document.removeEventListener('keydown', handleDialogKeyboard)
+  }, [diagnosticsOpen])
+
+  function closeDiagnostics() {
+    setDiagnosticsOpen(false)
+    requestAnimationFrame(() => computeStatusRef.current?.focus())
+  }
 
   return (
     <div className="workspace" data-theme={theme}>
@@ -349,24 +407,51 @@ function App() {
             <Activity aria-hidden="true" size={13} />
             Graph valid
           </span>
-          <span className="status-item">
+          <span
+            className="status-item"
+            data-persistence-probe={
+              typeof persistenceProbe === 'object' &&
+              !('error' in persistenceProbe)
+                ? JSON.stringify(persistenceProbe)
+                : undefined
+            }
+            data-persistence-error={
+              typeof persistenceProbe === 'object' &&
+              'error' in persistenceProbe
+                ? persistenceProbe.error
+                : undefined
+            }
+          >
             <HardDrive aria-hidden="true" size={13} />
-            {capabilities.indexedDb
-              ? 'Best effort storage'
-              : 'Storage unavailable'}
+            {persistenceProbe === 'checking'
+              ? 'Checking storage'
+              : persistenceProbe === 'unavailable'
+                ? 'Storage unavailable'
+                : 'error' in persistenceProbe
+                  ? 'Storage unavailable'
+                  : Object.entries(persistenceProbe)
+                        .filter(([key]) => key !== 'leaseWinner')
+                        .every(([, value]) => value === true)
+                    ? 'Storage verified'
+                    : 'Storage degraded'}
           </span>
         </div>
         <div className="status-group">
           <span className="status-item">
             <Map aria-hidden="true" size={13} />0 nodes
           </span>
-          <span
-            className="status-item"
+          <button
+            aria-expanded={diagnosticsOpen}
+            aria-haspopup="dialog"
+            className="status-item status-action"
             data-compute-sample={
               typeof computeProbe === 'object'
                 ? computeProbe.sample.join(',')
                 : undefined
             }
+            onClick={() => setDiagnosticsOpen(true)}
+            ref={computeStatusRef}
+            type="button"
           >
             <CircleGauge aria-hidden="true" size={13} />
             {computeProbe === 'checking'
@@ -376,13 +461,76 @@ function App() {
                 : computeProbe.backend === 'wasm'
                   ? 'WASM compute'
                   : 'CPU reference'}
-          </span>
+          </button>
           <span className="status-item zoom-readout">
             <Maximize2 aria-hidden="true" size={13} />
             100%
           </span>
         </div>
       </footer>
+
+      {diagnosticsOpen ? (
+        <div className="dialog-scrim">
+          <section
+            aria-labelledby="runtime-diagnostics-title"
+            aria-modal="true"
+            className="runtime-dialog"
+            role="dialog"
+          >
+            <div className="runtime-dialog-header">
+              <div>
+                <p className="eyebrow">Runtime</p>
+                <h2 id="runtime-diagnostics-title">Diagnostics</h2>
+              </div>
+              <IconButton
+                label="Close runtime diagnostics"
+                onClick={closeDiagnostics}
+                ref={diagnosticsCloseRef}
+              >
+                <X aria-hidden="true" size={17} />
+              </IconButton>
+            </div>
+            <dl className="diagnostic-list">
+              <div>
+                <dt>Compute backend</dt>
+                <dd>
+                  <strong>
+                    {typeof computeProbe === 'object'
+                      ? computeProbe.backend === 'wasm'
+                        ? 'WASM verified'
+                        : 'CPU reference'
+                      : 'Unavailable'}
+                  </strong>
+                  <span>
+                    {typeof computeProbe === 'object'
+                      ? `Sample ${computeProbe.sample.join(' · ')}`
+                      : 'No conformant sample'}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt>Local storage</dt>
+                <dd>
+                  <strong>
+                    {typeof persistenceProbe === 'object' &&
+                    !('error' in persistenceProbe)
+                      ? 'Recovery verified'
+                      : 'Unavailable'}
+                  </strong>
+                  <span>Atomic · rollback · lease · broadcast</span>
+                </dd>
+              </div>
+              <div>
+                <dt>Fallback</dt>
+                <dd>
+                  <strong>Ready</strong>
+                  <span>CPU reference · prior snapshot</span>
+                </dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -15,6 +15,13 @@
       "sha256": "12269da9e2d4fe7847495e05cce5c99e8ea4e34ed56d2c418753f8007fbb9214",
       "provenance": "Repository-authored M1 vectors derived from the normative processing equations",
       "purpose": "Provides independent numeric oracles for color, alpha, compositing, resize, normals, lights, and representative color"
+    },
+    {
+      "id": "normal-suggestion-v1",
+      "path": "vectors/normal-suggestion-v1.json",
+      "sha256": "b75e5b67e3d1daff0d781e7f380a66728217af0a50e347a8cd032640824fe8f2",
+      "provenance": "Repository-authored M1 synthetic normal and non-normal classification corpus",
+      "purpose": "Discriminates high-confidence, uncertain, photographic blue, and non-normal interpretation cases"
     }
   ]
 }

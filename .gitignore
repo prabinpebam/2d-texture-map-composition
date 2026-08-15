@@ -1,2 +1,3 @@
 /crates/**/target/
 /app/public/wasm/
+/test-results/

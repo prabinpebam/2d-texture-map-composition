@@ -2,13 +2,13 @@
 
 ## Status
 
-The detailing phase and implementation milestone M0 are complete. The repository
-now contains a validated React/TypeScript workspace foundation, design-system
-shell, engineering harness, and mandatory Playwright UX evaluator against the
-actual app in Microsoft Edge. Product feature milestones M1-M10 remain to be
-implemented. Exact HSL picker visual parity and several architecture capabilities
-remain intentionally gated by source evidence and executable spikes; those gates
-are defined below rather than treated as completed work.
+The detailing phase and implementation milestones M0-M1 are complete. The
+repository now contains a validated workspace foundation, scalar processing
+oracle, Rust/WASM worker prototype, bounded tile and PNG-envelope adapters,
+storage recovery proof, architecture decisions, and mandatory Playwright UX
+evaluation against the actual app in Microsoft Edge. Product feature milestones
+M2-M10 remain to be implemented. Failed M1 capability spikes remain intentionally
+hidden or bounded rather than treated as completed product work.
 
 The human-authored `seed-spec.md` is immutable and remains the source of product
 intent. Derived documents resolve ambiguities without changing that reference.
@@ -19,7 +19,7 @@ intent. Derived documents resolve ambiguities without changing that reference.
 | --- | --- | --- | --- |
 | 0 | `seed-spec.md` | Immutable human source | Preserved |
 | 1 | `01-detailing-plan.md` | Plan for producing/evaluating specifications and implementation plan | Closed |
-| 2 | `02-research-dossier.md` | Decision-relevant primary-source findings and required spikes | Drafting research closed; spikes pending |
+| 2 | `02-research-dossier.md` | Decision-relevant primary-source findings and required spikes | Research and M1 spike execution closed |
 | 3 | `03-product-requirements.md` | Scope, users, workflows, normative requirements, acceptance | Closed for M0/M1 |
 | 4 | `04-image-processing-spec.md` | Canonical types, formulas, node contracts, catalogs, tolerances | Closed for M0/M1 |
 | 5 | `05-architecture-runtime-persistence.md` | Modules, graph runtime, workers, cache, storage, schemas, security, budgets | Closed for M0/M1 |
@@ -34,21 +34,21 @@ responsible workstream.
 
 ## Entry Gate for Implementation
 
-M0 is closed only with formatting, lint, unit/accessibility, build, dependency,
-and actual-app Playwright UX evidence. M1 must close all required spikes and ADRs
-before feature milestones depend on their results. In particular:
+M0 and M1 closed with formatting, lint, unit/accessibility, build, dependency,
+numeric, and actual-app Playwright UX evidence. Dependent feature milestones must
+honor these M1 results:
 
 - TIFF capabilities remain hidden until SPIKE-001 passes.
-- Rust/WASM and optional WebGPU remain unaccepted until conformance and workload
-  evidence pass SPIKE-002/003.
+- Rust/WASM is accepted behind its worker protocol; WebGPU product dispatch
+  remains disabled pending the full conformance matrix.
 - Wide-gamut import claims remain bounded by SPIKE-004.
-- PNG workflow envelope limits remain provisional until SPIKE-006.
-- Normal-map auto behavior remains suggestion-only and may be removed if
-  SPIKE-007 cannot establish useful confidence.
+- PNG workflow envelope limits and metadata-failure behavior are accepted.
+- Normal-map automatic suggestion remains disabled because SPIKE-007 did not
+  establish representative-corpus confidence.
 - Exact HSL picker visual parity remains blocked until the approved design source
   is supplied or behavior-only visuals are explicitly accepted before M8.2.
 
-These constraints do not block the M0 foundation or the executable M1 spikes.
+These constraints do not block M2 graph authoring or M3 local persistence.
 
 ## Change Rules
 
