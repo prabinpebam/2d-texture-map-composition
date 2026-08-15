@@ -63,3 +63,44 @@ test('first-time user can orient and inspect a node template', async ({
     contentType: 'image/png',
   })
 })
+
+test('user receives verified compute readiness in the actual workspace', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+
+  const computeStatus = page.getByText('WASM compute', { exact: true })
+  await expect(computeStatus).toBeVisible()
+  await expect(computeStatus).toHaveAttribute(
+    'data-compute-sample',
+    '0.25,0.75,1',
+  )
+
+  const bounds = await computeStatus.boundingBox()
+  expect(bounds).not.toBeNull()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.y).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(
+    await page.evaluate(() => window.innerWidth),
+  )
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+    await page.evaluate(() => window.innerHeight),
+  )
+  expect(
+    await computeStatus.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      const hit = document.elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2,
+      )
+      return hit === element || element.contains(hit)
+    }),
+  ).toBe(true)
+
+  const screenshotPath = testInfo.outputPath('m1-wasm-compute-ready.png')
+  await page.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m1-wasm-compute-ready', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})

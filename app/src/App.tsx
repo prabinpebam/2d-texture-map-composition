@@ -44,6 +44,10 @@ import {
   type NodeCategory,
   type ThemePreference,
 } from './domain/workspace'
+import {
+  probeComputeBackend,
+  type ComputeProbeResult,
+} from './app/computeReadiness'
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
   input: 'Inputs',
@@ -72,6 +76,9 @@ function App() {
   const [selectedTemplate, setSelectedTemplate] =
     useState<NodeCatalogItem | null>(null)
   const [capabilities] = useState(detectEnvironment)
+  const [computeProbe, setComputeProbe] = useState<
+    ComputeProbeResult | 'checking' | 'unavailable'
+  >(() => (capabilities.workers ? 'checking' : 'unavailable'))
 
   const appBarRef = useRef<HTMLElement>(null)
   const libraryRef = useRef<HTMLElement>(null)
@@ -106,6 +113,22 @@ function App() {
     document.addEventListener('keydown', handleRegionNavigation)
     return () => document.removeEventListener('keydown', handleRegionNavigation)
   }, [])
+
+  useEffect(() => {
+    if (!capabilities.workers) return
+
+    let active = true
+    void probeComputeBackend()
+      .then((result) => {
+        if (active) setComputeProbe(result)
+      })
+      .catch(() => {
+        if (active) setComputeProbe('unavailable')
+      })
+    return () => {
+      active = false
+    }
+  }, [capabilities.workers])
 
   return (
     <div className="workspace" data-theme={theme}>
@@ -337,9 +360,22 @@ function App() {
           <span className="status-item">
             <Map aria-hidden="true" size={13} />0 nodes
           </span>
-          <span className="status-item">
+          <span
+            className="status-item"
+            data-compute-sample={
+              typeof computeProbe === 'object'
+                ? computeProbe.sample.join(',')
+                : undefined
+            }
+          >
             <CircleGauge aria-hidden="true" size={13} />
-            {capabilities.workers ? 'CPU reference' : 'Main-thread fallback'}
+            {computeProbe === 'checking'
+              ? 'Checking compute'
+              : computeProbe === 'unavailable'
+                ? 'Compute unavailable'
+                : computeProbe.backend === 'wasm'
+                  ? 'WASM compute'
+                  : 'CPU reference'}
           </span>
           <span className="status-item zoom-readout">
             <Maximize2 aria-hidden="true" size={13} />
