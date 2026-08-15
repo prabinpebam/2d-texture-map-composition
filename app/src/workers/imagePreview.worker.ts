@@ -1,6 +1,19 @@
 /// <reference lib="webworker" />
 
-import { encodedSrgbToLinear } from '../processing/scalar'
+import {
+  applyBrightnessCorrection,
+  type BrightnessControls,
+} from '../processing/corrections'
+import {
+  applyColorCorrection,
+  type ColorCorrectionControls,
+} from '../processing/colorCorrection'
+import {
+  RESIZE_KERNELS,
+  resampleScalar1d,
+  type ResizeKernelId,
+} from '../processing/resampling'
+import { encodedSrgbToLinear, linearSrgbToEncoded } from '../processing/scalar'
 import { sniffImageFile } from '../processing/imageSniffer'
 import {
   IMAGE_PREVIEW_PROTOCOL_VERSION,
@@ -50,6 +63,61 @@ function getCachedPreview(key: string) {
   return preview
 }
 
+function resizeLinearRgba(
+  source: Float32Array,
+  sourceWidth: number,
+  sourceHeight: number,
+  destinationWidth: number,
+  destinationHeight: number,
+  kernel: ResizeKernelId,
+) {
+  const horizontal = new Float32Array(destinationWidth * sourceHeight * 4)
+  for (let row = 0; row < sourceHeight; row += 1) {
+    for (let channel = 0; channel < 4; channel += 1) {
+      const line = new Float32Array(sourceWidth)
+      for (let column = 0; column < sourceWidth; column += 1) {
+        const offset = (row * sourceWidth + column) * 4
+        const alpha = source[offset + 3]
+        line[column] = channel === 3 ? alpha : source[offset + channel] * alpha
+      }
+      const resized = resampleScalar1d(line, destinationWidth, kernel)
+      for (let column = 0; column < destinationWidth; column += 1) {
+        horizontal[(row * destinationWidth + column) * 4 + channel] =
+          resized[column]
+      }
+    }
+  }
+
+  const output = new Float32Array(destinationWidth * destinationHeight * 4)
+  for (let column = 0; column < destinationWidth; column += 1) {
+    for (let channel = 0; channel < 4; channel += 1) {
+      const line = new Float32Array(sourceHeight)
+      for (let row = 0; row < sourceHeight; row += 1) {
+        line[row] = horizontal[(row * destinationWidth + column) * 4 + channel]
+      }
+      const resized = resampleScalar1d(line, destinationHeight, kernel)
+      for (let row = 0; row < destinationHeight; row += 1) {
+        output[(row * destinationWidth + column) * 4 + channel] = resized[row]
+      }
+    }
+  }
+
+  for (let offset = 0; offset < output.length; offset += 4) {
+    const alpha = output[offset + 3]
+    if (alpha <= 1e-7) {
+      output[offset] = 0
+      output[offset + 1] = 0
+      output[offset + 2] = 0
+      output[offset + 3] = 0
+    } else {
+      output[offset] /= alpha
+      output[offset + 1] /= alpha
+      output[offset + 2] /= alpha
+    }
+  }
+  return output
+}
+
 function maskValue(
   red: number,
   green: number,
@@ -58,19 +126,16 @@ function maskValue(
   request: ImagePreviewRequest,
 ) {
   let value: number
-  if (request.maskSource === 'alpha') value = alpha / 255
+  if (request.maskSource === 'alpha') value = alpha
   else {
-    const linearRed = encodedSrgbToLinear(red / 255)
-    const linearGreen = encodedSrgbToLinear(green / 255)
-    const linearBlue = encodedSrgbToLinear(blue / 255)
     value =
       request.maskSource === 'red'
-        ? linearRed
+        ? red
         : request.maskSource === 'green'
-          ? linearGreen
+          ? green
           : request.maskSource === 'blue'
-            ? linearBlue
-            : 0.2126 * linearRed + 0.7152 * linearGreen + 0.0722 * linearBlue
+            ? blue
+            : 0.2126 * red + 0.7152 * green + 0.0722 * blue
   }
   return request.invert ? 1 - value : value
 }
@@ -107,39 +172,119 @@ async function render(request: ImagePreviewRequest) {
     })
     if (!context) throw new Error('Offscreen 2D canvas is unavailable')
     context.drawImage(bitmap, 0, 0, width, height)
-    const imageData = context.getImageData(0, 0, width, height)
-    const pixels = imageData.data
-    for (let offset = 0; offset < pixels.length; offset += 4) {
+    const decoded = context.getImageData(0, 0, width, height).data
+    let linear = new Float32Array(decoded.length)
+    for (let offset = 0; offset < decoded.length; offset += 4) {
+      linear[offset] = encodedSrgbToLinear(decoded[offset] / 255)
+      linear[offset + 1] = encodedSrgbToLinear(decoded[offset + 1] / 255)
+      linear[offset + 2] = encodedSrgbToLinear(decoded[offset + 2] / 255)
+      linear[offset + 3] = decoded[offset + 3] / 255
       if (request.mode === 'mask') {
-        const value = Math.round(
-          Math.min(
-            1,
-            Math.max(
-              0,
-              maskValue(
-                pixels[offset],
-                pixels[offset + 1],
-                pixels[offset + 2],
-                pixels[offset + 3],
-                request,
-              ),
+        const value = Math.min(
+          1,
+          Math.max(
+            0,
+            maskValue(
+              linear[offset],
+              linear[offset + 1],
+              linear[offset + 2],
+              linear[offset + 3],
+              request,
             ),
-          ) * 255,
+          ),
         )
-        pixels[offset] = value
-        pixels[offset + 1] = value
-        pixels[offset + 2] = value
-        pixels[offset + 3] = 255
-      } else if (pixels[offset + 3] <= 0) {
-        pixels[offset] = 0
-        pixels[offset + 1] = 0
-        pixels[offset + 2] = 0
+        linear[offset] = value
+        linear[offset + 1] = value
+        linear[offset + 2] = value
+        linear[offset + 3] = 1
+      } else if (linear[offset + 3] <= 0) {
+        linear[offset] = 0
+        linear[offset + 1] = 0
+        linear[offset + 2] = 0
       }
+    }
+    let currentWidth = width
+    let currentHeight = height
+    for (const operation of request.operations) {
+      if (operation.type === 'resize') {
+        if (!RESIZE_KERNELS.includes(operation.kernel as ResizeKernelId)) {
+          throw new Error(`Unknown resize kernel: ${operation.kernel}`)
+        }
+        const operationScale = Math.min(
+          1,
+          request.maxLongEdge / Math.max(operation.width, operation.height),
+        )
+        const destinationWidth = Math.max(
+          1,
+          Math.round(operation.width * operationScale),
+        )
+        const destinationHeight = Math.max(
+          1,
+          Math.round(operation.height * operationScale),
+        )
+        linear = resizeLinearRgba(
+          linear,
+          currentWidth,
+          currentHeight,
+          destinationWidth,
+          destinationHeight,
+          operation.kernel as ResizeKernelId,
+        )
+        currentWidth = destinationWidth
+        currentHeight = destinationHeight
+      } else {
+        for (let offset = 0; offset < linear.length; offset += 4) {
+          const pixel = {
+            red: linear[offset],
+            green: linear[offset + 1],
+            blue: linear[offset + 2],
+            alpha: linear[offset + 3],
+          }
+          const corrected =
+            operation.type === 'brightness'
+              ? applyBrightnessCorrection(pixel, {
+                  exposure: operation.exposure,
+                  highlights: operation.highlights,
+                  shadows: operation.shadows,
+                  whites: operation.whites,
+                  blacks: operation.blacks,
+                } satisfies BrightnessControls)
+              : applyColorCorrection(pixel, {
+                  temperature: operation.temperature,
+                  greenMagenta: operation.greenMagenta,
+                  hueDegrees: operation.hueDegrees,
+                  saturation: operation.saturation,
+                  tint: operation.tint,
+                  tintMix: operation.tintMix,
+                } satisfies ColorCorrectionControls)
+          linear[offset] = corrected.red
+          linear[offset + 1] = corrected.green
+          linear[offset + 2] = corrected.blue
+          linear[offset + 3] = corrected.alpha
+        }
+      }
+    }
+    const pixels = new Uint8ClampedArray(linear.length)
+    for (let offset = 0; offset < linear.length; offset += 4) {
+      const encode = (value: number) =>
+        request.mode === 'mask' ? value : linearSrgbToEncoded(value)
+      pixels[offset] = Math.round(
+        Math.min(1, Math.max(0, encode(linear[offset]))) * 255,
+      )
+      pixels[offset + 1] = Math.round(
+        Math.min(1, Math.max(0, encode(linear[offset + 1]))) * 255,
+      )
+      pixels[offset + 2] = Math.round(
+        Math.min(1, Math.max(0, encode(linear[offset + 2]))) * 255,
+      )
+      pixels[offset + 3] = Math.round(
+        Math.min(1, Math.max(0, linear[offset + 3])) * 255,
+      )
     }
     if (latestGeneration.get(request.nodeId) !== request.generation) return null
     return {
-      width,
-      height,
+      width: currentWidth,
+      height: currentHeight,
       sourceWidth: sniffed.width,
       sourceHeight: sniffed.height,
       pixels,

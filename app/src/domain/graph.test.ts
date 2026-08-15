@@ -19,7 +19,7 @@ describe('typed graph domain', () => {
       type: 'load-image',
       label: 'Load image',
       position: { x: 12, y: 24 },
-      size: { width: 240, height: 128 },
+      size: { width: 280, height: 300 },
       zIndex: 3,
       bypassed: false,
       muted: false,

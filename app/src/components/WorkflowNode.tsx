@@ -5,6 +5,18 @@ import {
   type Node,
   type NodeProps,
 } from '@xyflow/react'
+import type { GraphNode } from '../domain/graph'
+import { ImagePreviewCanvas } from './ImagePreviewCanvas'
+import { NodeWidgetFields } from './NodeWidgetFields'
+
+interface NodePreviewResult {
+  width: number
+  height: number
+  pixels: ArrayBuffer
+  sample: readonly [number, number, number, number]
+  cacheHit: boolean
+  generation: number
+}
 
 export interface WorkflowNodeData extends Record<string, unknown> {
   label: string
@@ -14,6 +26,12 @@ export interface WorkflowNodeData extends Record<string, unknown> {
   bypassed: boolean
   muted: boolean
   locked: boolean
+  node: GraphNode
+  preview:
+    | { status: 'idle' | 'loading' }
+    | { status: 'ready'; result: NodePreviewResult }
+    | { status: 'error'; message: string }
+  onParameters(patch: Record<string, unknown>): void
   onResize(width: number, height: number): void
 }
 
@@ -77,6 +95,24 @@ export function WorkflowNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
           ))}
         </div>
       </div>
+      <NodeWidgetFields
+        host="node"
+        node={data.node}
+        onChange={data.onParameters}
+      />
+      {data.node.type === 'preview' ? (
+        <div className="workflow-node-preview nodrag nowheel">
+          {data.preview.status === 'ready' ? (
+            <ImagePreviewCanvas result={data.preview.result} />
+          ) : data.preview.status === 'loading' ? (
+            <span role="status">Rendering</span>
+          ) : data.preview.status === 'error' ? (
+            <span role="alert">{data.preview.message}</span>
+          ) : (
+            <span>Run or connect an image</span>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

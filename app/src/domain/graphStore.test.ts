@@ -110,7 +110,7 @@ describe('graph command store', () => {
     ])
     expect(store.getState().selectedNodeIds).toEqual(['resize-copy'])
     expect(store.getState().document.nodes[1].position).toEqual({
-      x: 264,
+      x: 304,
       y: 0,
     })
 

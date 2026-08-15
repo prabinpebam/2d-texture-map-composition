@@ -16,6 +16,7 @@ const validRequest = {
   maskSource: 'luminosity',
   invert: false,
   maxLongEdge: 1024,
+  operations: [],
 }
 
 describe('image preview worker protocol', () => {

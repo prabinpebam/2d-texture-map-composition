@@ -1,7 +1,10 @@
 import { sniffImageFile, type SniffedImage } from '../processing/imageSniffer'
 import { getImagePreviewClient } from '../workers/imagePreviewClient'
 import type { PreviewMaskSource } from '../workers/imagePreviewProtocol'
+import type { PreviewOperation } from '../workers/imagePreviewProtocol'
 import { getPersistenceClient } from '../workers/persistenceClient'
+
+export type { PreviewOperation }
 
 export interface ImportedImageAsset {
   digest: string
@@ -46,6 +49,7 @@ export async function renderImageAssetPreview(
     mode: 'color' | 'mask'
     maskSource: PreviewMaskSource
     invert: boolean
+    operations?: readonly PreviewOperation[]
   },
 ): Promise<ImageAssetPreview> {
   const persistenceClient = getPersistenceClient()
@@ -53,11 +57,13 @@ export async function renderImageAssetPreview(
   if (!asset) throw new Error('Source image asset is missing')
   return getImagePreviewClient().render(nodeId, asset.blob, {
     ...settings,
+    operations: settings.operations ?? [],
     cacheKey: [
       digest,
       settings.mode,
       settings.maskSource,
       settings.invert ? 'invert' : 'normal',
+      JSON.stringify(settings.operations ?? []),
     ].join(':'),
   })
 }

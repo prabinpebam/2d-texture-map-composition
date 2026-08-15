@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   Blend,
@@ -50,6 +50,7 @@ import {
 } from './components/GraphCommandDialog'
 import { IconButton } from './components/IconButton'
 import { ImagePreviewCanvas } from './components/ImagePreviewCanvas'
+import { NodeWidgetFields } from './components/NodeWidgetFields'
 import {
   ProjectBrowserDialog,
   type LocalProjectSummary,
@@ -72,12 +73,14 @@ import {
   type PersistenceProbeResult,
 } from './app/storageReadiness'
 import { useGraphStore } from './app/graphState'
-import { NODE_TYPE_REGISTRY } from './domain/graph'
+import { getDefaultNodeSize, NODE_TYPE_REGISTRY } from './domain/graph'
 import { serializeGraphWorkflow } from './app/graphWorkflowExport'
+import { encodedSrgbToLinear } from './app/transformCatalog'
 import {
   importImageAsset,
   renderImageAssetPreview,
   type ImageAssetPreview,
+  type PreviewOperation,
 } from './app/imageAssets'
 import {
   createLocalProject,
@@ -113,6 +116,13 @@ const THEME_ICONS = {
 } satisfies Record<ThemePreference, typeof Sun>
 
 const NODE_TYPES = { workflow: WorkflowNode }
+
+function getAutomaticNodePosition(nodeCount: number) {
+  return {
+    x: 100 + (nodeCount % 3) * 340,
+    y: 100 + Math.floor(nodeCount / 3) * 560,
+  }
+}
 
 function NodeInternalsSync({ nodeIdKey }: { nodeIdKey: string }) {
   const updateNodeInternals = useUpdateNodeInternals()
@@ -154,6 +164,7 @@ function App() {
   const [inspectorView, setInspectorView] = useState<'inspector' | 'outline'>(
     'inspector',
   )
+  const [inspectorVisible, setInspectorVisible] = useState(true)
   const [selectedTemplate, setSelectedTemplate] =
     useState<NodeCatalogItem | null>(null)
   const [capabilities] = useState(detectEnvironment)
@@ -230,6 +241,7 @@ function App() {
   const normalizedCatalogQuery = catalogQuery.trim().toLowerCase()
   const flowNodes: WorkflowFlowNode[] = graphDocument.nodes.map((node) => {
     const definition = NODE_TYPE_REGISTRY[node.type]
+    const defaultSize = getDefaultNodeSize(node.type)
     return {
       id: node.id,
       type: 'workflow',
@@ -245,6 +257,13 @@ function App() {
         bypassed: node.bypassed,
         muted: node.muted,
         locked: node.locked,
+        node,
+        preview:
+          node.type === 'preview'
+            ? previewState
+            : ({ status: 'idle' } as const),
+        onParameters: (patch: Record<string, unknown>) =>
+          updateNodeParameters(node.id, patch),
         onResize: (width: number, height: number) =>
           setNodeGeometry(node.id, {
             ...node.position,
@@ -252,7 +271,10 @@ function App() {
             height,
           }),
       },
-      style: { width: node.size.width, height: node.size.height },
+      style: {
+        width: Math.max(node.size.width, defaultSize.width),
+        height: Math.max(node.size.height, defaultSize.height),
+      },
     }
   })
   const selectedNode = graphDocument.nodes.find((node) =>
@@ -288,18 +310,72 @@ function App() {
   const previewNode = graphDocument.nodes.find(
     (node) => node.type === 'preview',
   )
-  const previewInput = previewNode
-    ? graphDocument.edges.find(
-        (edge) =>
-          edge.targetNodeId === previewNode.id && edge.targetPortId === 'image',
+  const previewChain = useMemo(() => {
+    if (!previewNode) return null
+    let currentNode = previewNode
+    const reversedOperations: PreviewOperation[] = []
+    const visited = new Set<string>()
+    while (!visited.has(currentNode.id)) {
+      visited.add(currentNode.id)
+      const edge = graphDocument.edges.find(
+        (candidate) => candidate.targetNodeId === currentNode.id,
       )
-    : undefined
-  const previewSource = previewInput
-    ? graphDocument.nodes.find(
-        (node) =>
-          node.id === previewInput.sourceNodeId && node.type === 'load-image',
+      if (!edge) return null
+      const source = graphDocument.nodes.find(
+        (candidate) => candidate.id === edge.sourceNodeId,
       )
-    : undefined
+      if (!source) return null
+      if (source.type === 'load-image') {
+        return {
+          source,
+          operations: reversedOperations.reverse(),
+        }
+      }
+      const parameters = source.parameters ?? {}
+      if (source.type === 'resize') {
+        reversedOperations.push({
+          type: 'resize',
+          width: Number(parameters.width ?? 1),
+          height: Number(parameters.height ?? 1),
+          kernel: String(parameters.resolvedKernel ?? 'mitchell.v1'),
+        })
+      } else if (source.type === 'brightness-correction') {
+        reversedOperations.push({
+          type: 'brightness',
+          exposure: Number(parameters.exposure ?? 0),
+          highlights: Number(parameters.highlights ?? 0),
+          shadows: Number(parameters.shadows ?? 0),
+          whites: Number(parameters.whites ?? 0),
+          blacks: Number(parameters.blacks ?? 0),
+        })
+      } else if (source.type === 'color-correction') {
+        const tintHex = String(parameters.tintHex ?? '#ffffff')
+        const tint = [1, 3, 5].map((offset) =>
+          encodedSrgbToLinear(
+            Number.parseInt(tintHex.slice(offset, offset + 2), 16) / 255,
+          ),
+        )
+        reversedOperations.push({
+          type: 'color-correction',
+          temperature: Number(parameters.temperature ?? 0),
+          greenMagenta: Number(parameters.greenMagenta ?? 0),
+          hueDegrees: Number(parameters.hueDegrees ?? 0),
+          saturation: Number(parameters.saturation ?? 0),
+          tint: [
+            Number(tint[0] ?? 1),
+            Number(tint[1] ?? 1),
+            Number(tint[2] ?? 1),
+          ],
+          tintMix: Number(parameters.tintMix ?? 0),
+        })
+      } else {
+        return null
+      }
+      currentNode = source
+    }
+    return null
+  }, [graphDocument, previewNode])
+  const previewSource = previewChain?.source
 
   useEffect(() => {
     const digest = previewSource?.parameters?.assetDigest
@@ -328,6 +404,7 @@ function App() {
       mode,
       maskSource,
       invert: previewSource.parameters?.invert === true,
+      operations: previewChain.operations,
     })
       .then((result) => {
         if (active) setPreviewState({ status: 'ready', result })
@@ -346,7 +423,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [activeProject.id, previewNode, previewSource])
+  }, [activeProject.id, previewChain, previewNode, previewSource])
 
   useEffect(() => {
     function handleRegionNavigation(event: globalThis.KeyboardEvent) {
@@ -626,27 +703,19 @@ function App() {
       try {
         const asset = await importImageAsset(activeProject.id, file)
         const nodeCount = graphDocument.nodes.length + imported
-        addNode(
-          'load-image',
-          {
-            x: 100 + (nodeCount % 3) * 280,
-            y: 100 + Math.floor(nodeCount / 3) * 180,
-          },
-          undefined,
-          {
-            assetDigest: asset.digest,
-            fileName: asset.fileName,
-            mediaType: asset.sniffed.mediaType,
-            width: asset.sniffed.width,
-            height: asset.sniffed.height,
-            profileDecision: 'embedded-profile-or-srgb-fallback',
-            orientationDecision: 'decoder-applied-once',
-            normalizationVersion: 'import-normalization.v1',
-            mode: 'color',
-            maskSource: 'luminosity',
-            invert: false,
-          },
-        )
+        addNode('load-image', getAutomaticNodePosition(nodeCount), undefined, {
+          assetDigest: asset.digest,
+          fileName: asset.fileName,
+          mediaType: asset.sniffed.mediaType,
+          width: asset.sniffed.width,
+          height: asset.sniffed.height,
+          profileDecision: 'embedded-profile-or-srgb-fallback',
+          orientationDecision: 'decoder-applied-once',
+          normalizationVersion: 'import-normalization.v1',
+          mode: 'color',
+          maskSource: 'luminosity',
+          invert: false,
+        })
         imported += 1
       } catch (error) {
         failures.push(
@@ -853,10 +922,20 @@ function App() {
           <IconButton disabled label="Settings">
             <Settings aria-hidden="true" size={17} />
           </IconButton>
+          {!inspectorVisible ? (
+            <IconButton
+              label="Show inspector"
+              onClick={() => setInspectorVisible(true)}
+            >
+              <PanelRight aria-hidden="true" size={17} />
+            </IconButton>
+          ) : null}
         </div>
       </header>
 
-      <div className="workspace-body">
+      <div
+        className={`workspace-body${inspectorVisible ? '' : ' inspector-hidden'}`}
+      >
         <aside
           aria-label="Node library"
           className="node-library"
@@ -934,6 +1013,22 @@ function App() {
               </p>
             ) : null}
           </nav>
+          {selectedTemplate ? (
+            <button
+              className="primary-command catalog-add-command"
+              disabled={projectPersistence.access !== 'writer'}
+              onClick={() => {
+                addNode(
+                  selectedTemplate.id,
+                  getAutomaticNodePosition(graphDocument.nodes.length),
+                )
+              }}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={15} />
+              Add to canvas
+            </button>
+          ) : null}
         </aside>
 
         <main
@@ -1023,216 +1118,160 @@ function App() {
           )}
         </main>
 
-        <aside
-          aria-label="Inspector"
-          className="inspector"
-          ref={inspectorRef}
-          tabIndex={-1}
-        >
-          <div
-            className="inspector-tabs"
-            role="tablist"
-            aria-label="Inspector views"
+        {inspectorVisible ? (
+          <aside
+            aria-label="Inspector"
+            className="inspector"
+            ref={inspectorRef}
+            tabIndex={-1}
           >
-            <button
-              aria-selected={inspectorView === 'inspector'}
-              onClick={() => setInspectorView('inspector')}
-              role="tab"
-              type="button"
+            <IconButton
+              className="inspector-close"
+              label="Close inspector"
+              onClick={() => setInspectorVisible(false)}
             >
-              Inspector
-            </button>
-            <button
-              aria-selected={inspectorView === 'outline'}
-              onClick={() => setInspectorView('outline')}
-              role="tab"
-              type="button"
+              <X aria-hidden="true" size={15} />
+            </IconButton>
+            <div
+              className="inspector-tabs"
+              role="tablist"
+              aria-label="Inspector views"
             >
-              Outline
-            </button>
-          </div>
-
-          {inspectorView === 'outline' ? (
-            <div className="graph-outline">
-              <p className="eyebrow">Graph order</p>
-              <h2>Nodes</h2>
-              {graphDocument.nodes.length === 0 ? (
-                <p className="outline-empty">No authored nodes</p>
-              ) : (
-                <ol>
-                  {[...graphDocument.nodes]
-                    .sort(
-                      (left, right) =>
-                        left.zIndex - right.zIndex ||
-                        left.id.localeCompare(right.id),
-                    )
-                    .map((node) => (
-                      <li key={node.id}>
-                        <button
-                          aria-pressed={selectedNodeIds.includes(node.id)}
-                          onClick={() => {
-                            selectNode(node.id)
-                            setSelectedTemplate(
-                              NODE_CATALOG.find(
-                                (item) => item.id === node.type,
-                              ) ?? null,
-                            )
-                          }}
-                          type="button"
-                        >
-                          <span>{node.label}</span>
-                          <small>
-                            {node.locked
-                              ? 'Locked'
-                              : node.muted
-                                ? 'Muted'
-                                : node.bypassed
-                                  ? 'Bypassed'
-                                  : 'Ready'}
-                          </small>
-                        </button>
-                      </li>
-                    ))}
-                </ol>
-              )}
-            </div>
-          ) : selectedTemplate ? (
-            <div className="inspector-content">
-              <div className="template-heading">
-                <span className={`template-icon ${selectedTemplate.category}`}>
-                  {(() => {
-                    const SelectedIcon =
-                      CATEGORY_ICONS[selectedTemplate.category]
-                    return <SelectedIcon aria-hidden="true" size={18} />
-                  })()}
-                </span>
-                <div>
-                  <p className="eyebrow">Node template</p>
-                  <h2>{selectedTemplate.label}</h2>
-                </div>
-              </div>
-              <p className="template-summary">{selectedTemplate.summary}</p>
-
-              {selectedNode?.type === 'load-image' ? (
-                <section className="inspector-section image-settings">
-                  <h3>Image</h3>
-                  <p className="source-file-name">
-                    {typeof selectedNode.parameters?.fileName === 'string'
-                      ? selectedNode.parameters.fileName
-                      : 'No source selected'}
-                  </p>
-                  <label>
-                    Output mode
-                    <select
-                      onChange={(event) =>
-                        updateNodeParameters(selectedNode.id, {
-                          mode: event.target.value,
-                        })
-                      }
-                      value={
-                        selectedNode.parameters?.mode === 'mask'
-                          ? 'mask'
-                          : 'color'
-                      }
-                    >
-                      <option value="color">Color image</option>
-                      <option value="mask">Mask</option>
-                    </select>
-                  </label>
-                  {selectedNode.parameters?.mode === 'mask' ? (
-                    <>
-                      <label>
-                        Mask source
-                        <select
-                          onChange={(event) =>
-                            updateNodeParameters(selectedNode.id, {
-                              maskSource: event.target.value,
-                            })
-                          }
-                          value={String(
-                            selectedNode.parameters?.maskSource ?? 'luminosity',
-                          )}
-                        >
-                          <option value="luminosity">Luminosity</option>
-                          <option value="alpha">Alpha</option>
-                          <option value="red">Red</option>
-                          <option value="green">Green</option>
-                          <option value="blue">Blue</option>
-                        </select>
-                      </label>
-                      <label className="checkbox-setting">
-                        <input
-                          checked={selectedNode.parameters?.invert === true}
-                          onChange={(event) =>
-                            updateNodeParameters(selectedNode.id, {
-                              invert: event.target.checked,
-                            })
-                          }
-                          type="checkbox"
-                        />
-                        Invert mask
-                      </label>
-                    </>
-                  ) : null}
-                </section>
-              ) : null}
-
               <button
-                className="primary-command"
-                disabled={projectPersistence.access !== 'writer'}
-                onClick={() => {
-                  const nodeCount = graphDocument.nodes.length
-                  addNode(selectedTemplate.id, {
-                    x: 100 + (nodeCount % 3) * 280,
-                    y: 100 + Math.floor(nodeCount / 3) * 180,
-                  })
-                }}
+                aria-selected={inspectorView === 'inspector'}
+                onClick={() => setInspectorView('inspector')}
+                role="tab"
                 type="button"
               >
-                <Plus aria-hidden="true" size={15} />
-                Add to canvas
+                Inspector
               </button>
+              <button
+                aria-selected={inspectorView === 'outline'}
+                onClick={() => setInspectorView('outline')}
+                role="tab"
+                type="button"
+              >
+                Outline
+              </button>
+            </div>
 
-              <section className="inspector-section">
-                <h3>State</h3>
-                <div className="state-row">
-                  <LockKeyhole aria-hidden="true" size={15} />
-                  <span>
-                    {selectedNode?.type === selectedTemplate.id
-                      ? 'Selected on canvas'
-                      : 'Ready to add'}
+            {inspectorView === 'outline' ? (
+              <div className="graph-outline">
+                <p className="eyebrow">Graph order</p>
+                <h2>Nodes</h2>
+                {graphDocument.nodes.length === 0 ? (
+                  <p className="outline-empty">No authored nodes</p>
+                ) : (
+                  <ol>
+                    {[...graphDocument.nodes]
+                      .sort(
+                        (left, right) =>
+                          left.zIndex - right.zIndex ||
+                          left.id.localeCompare(right.id),
+                      )
+                      .map((node) => (
+                        <li key={node.id}>
+                          <button
+                            aria-pressed={selectedNodeIds.includes(node.id)}
+                            onClick={() => {
+                              selectNode(node.id)
+                              setSelectedTemplate(
+                                NODE_CATALOG.find(
+                                  (item) => item.id === node.type,
+                                ) ?? null,
+                              )
+                            }}
+                            type="button"
+                          >
+                            <span>{node.label}</span>
+                            <small>
+                              {node.locked
+                                ? 'Locked'
+                                : node.muted
+                                  ? 'Muted'
+                                  : node.bypassed
+                                    ? 'Bypassed'
+                                    : 'Ready'}
+                            </small>
+                          </button>
+                        </li>
+                      ))}
+                  </ol>
+                )}
+              </div>
+            ) : selectedTemplate ? (
+              <div className="inspector-content">
+                <div className="template-heading">
+                  <span
+                    className={`template-icon ${selectedTemplate.category}`}
+                  >
+                    {(() => {
+                      const SelectedIcon =
+                        CATEGORY_ICONS[selectedTemplate.category]
+                      return <SelectedIcon aria-hidden="true" size={18} />
+                    })()}
                   </span>
+                  <div>
+                    <p className="eyebrow">Node template</p>
+                    <h2>{selectedTemplate.label}</h2>
+                  </div>
                 </div>
-              </section>
-              {previewNode ? (
-                <section className="inspector-section preview-surface">
-                  <h3>Preview</h3>
-                  {!previewSource ? (
-                    <p>Connect a Load image node.</p>
-                  ) : previewState.status === 'loading' ? (
-                    <p role="status">Rendering preview</p>
-                  ) : previewState.status === 'error' ? (
-                    <p role="alert">{previewState.message}</p>
-                  ) : previewState.status === 'ready' ? (
-                    <>
-                      <ImagePreviewCanvas result={previewState.result} />
-                      <p>
-                        {previewState.result.sourceWidth} ×{' '}
-                        {previewState.result.sourceHeight} source
-                      </p>
-                    </>
-                  ) : null}
+                <p className="template-summary">{selectedTemplate.summary}</p>
+
+                {selectedNode ? (
+                  <section className="inspector-section schema-inspector-fields">
+                    <h3>Parameters</h3>
+                    <NodeWidgetFields
+                      host="inspector"
+                      node={selectedNode}
+                      onChange={(patch) =>
+                        updateNodeParameters(selectedNode.id, patch)
+                      }
+                    />
+                  </section>
+                ) : null}
+
+                <section className="inspector-section">
+                  <h3>State</h3>
+                  <div className="state-row">
+                    <LockKeyhole aria-hidden="true" size={15} />
+                    <span>
+                      {selectedNode?.type === selectedTemplate.id
+                        ? 'Selected on canvas'
+                        : 'Ready to add'}
+                    </span>
+                  </div>
                 </section>
-              ) : null}
-            </div>
-          ) : (
-            <div className="inspector-empty">
-              <Palette aria-hidden="true" size={22} />
-              <strong>Nothing selected</strong>
-              <span>Node settings appear here.</span>
-            </div>
-          )}
-        </aside>
+                {previewNode ? (
+                  <section className="inspector-section preview-surface">
+                    <h3>Preview</h3>
+                    {!previewSource ? (
+                      <p>Connect a Load image node.</p>
+                    ) : previewState.status === 'loading' ? (
+                      <p role="status">Rendering preview</p>
+                    ) : previewState.status === 'error' ? (
+                      <p role="alert">{previewState.message}</p>
+                    ) : previewState.status === 'ready' ? (
+                      <>
+                        <ImagePreviewCanvas result={previewState.result} />
+                        <p>
+                          {previewState.result.sourceWidth} ×{' '}
+                          {previewState.result.sourceHeight} source
+                        </p>
+                      </>
+                    ) : null}
+                  </section>
+                ) : null}
+              </div>
+            ) : (
+              <div className="inspector-empty">
+                <Palette aria-hidden="true" size={22} />
+                <strong>Nothing selected</strong>
+                <span>Node settings appear here.</span>
+              </div>
+            )}
+          </aside>
+        ) : null}
       </div>
 
       <footer
@@ -1434,11 +1473,7 @@ function App() {
           }
           mode={graphCommand}
           onAdd={(type) => {
-            const nodeCount = graphDocument.nodes.length
-            addNode(type, {
-              x: 100 + (nodeCount % 3) * 280,
-              y: 100 + Math.floor(nodeCount / 3) * 180,
-            })
+            addNode(type, getAutomaticNodePosition(graphDocument.nodes.length))
           }}
           onClose={() => {
             setGraphCommand(null)

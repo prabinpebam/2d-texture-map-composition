@@ -1,4 +1,5 @@
 import { NODE_CATALOG, type NodeCatalogItem } from './workspace'
+import { getDefaultNodeParameters } from './nodeWidgetSchema'
 
 export type PortDataType =
   'image' | 'mask' | 'height' | 'normal' | 'color' | 'light'
@@ -180,6 +181,24 @@ export const NODE_TYPE_REGISTRY = Object.fromEntries(
   NODE_CATALOG.map((item) => [item.id, { ...item, ...definitions[item.id] }]),
 ) as Readonly<Record<string, NodeTypeDefinition>>
 
+export function getDefaultNodeSize(type: string): GraphNode['size'] {
+  return {
+    width: type === 'preview' ? 320 : 280,
+    height:
+      type === 'preview'
+        ? 360
+        : type === 'color-correction'
+          ? 520
+          : type === 'brightness-correction'
+            ? 470
+            : type === 'resize'
+              ? 430
+              : type === 'load-image'
+                ? 300
+                : 128,
+  }
+}
+
 export function createGraphNode(
   type: string,
   id: string,
@@ -193,21 +212,30 @@ export function createGraphNode(
     type,
     label: definition.label,
     position,
-    size: { width: 240, height: 128 },
+    size: getDefaultNodeSize(type),
     zIndex,
     bypassed: false,
     muted: false,
     locked: false,
-    parameters:
-      type === 'load-image'
-        ? {
-            assetDigest: null,
-            fileName: null,
-            mode: 'color',
-            maskSource: 'luminosity',
-            invert: false,
-          }
-        : {},
+    parameters: {
+      ...getDefaultNodeParameters(type),
+      ...(type === 'load-image'
+        ? { assetDigest: null }
+        : type === 'resize'
+          ? {
+              widthUnit: 'pixels',
+              heightUnit: 'pixels',
+              algorithmVersion: 'resize.v1',
+            }
+          : type === 'brightness-correction'
+            ? { algorithmVersion: 'brightness.v1' }
+            : type === 'color-correction'
+              ? {
+                  tint: [1, 1, 1],
+                  algorithmVersion: 'color-correction.v1',
+                }
+              : {}),
+    },
   }
 }
 

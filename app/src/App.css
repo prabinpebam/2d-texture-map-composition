@@ -202,12 +202,24 @@
   min-height: 0;
 }
 
+.workspace-body.inspector-hidden {
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
 .node-library,
 .inspector {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: auto;
   background: var(--surface-1);
+}
+
+.inspector-close {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  right: 6px;
 }
 
 .node-library {
@@ -276,6 +288,14 @@
 
 .catalog {
   margin-top: 16px;
+}
+
+.catalog-add-command {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  margin-top: 14px;
+  box-shadow: 0 -6px 12px var(--surface-1);
 }
 
 .catalog-section + .catalog-section {
@@ -661,6 +681,101 @@
   background: var(--accent);
 }
 
+.node-widget-fields {
+  display: grid;
+  gap: 7px;
+  padding: 9px 10px 11px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+}
+
+.node-widget-field,
+.node-widget-readonly {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 9px;
+}
+
+.node-widget-field.numeric {
+  grid-template-columns: minmax(70px, 0.8fr) minmax(55px, 1fr) 58px;
+}
+
+.node-widget-field select,
+.node-widget-field input[type='number'],
+.node-widget-field input[type='color'] {
+  width: 100%;
+  min-width: 0;
+  min-height: 25px;
+  padding: 2px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  font: inherit;
+}
+
+.node-widget-field input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+
+.node-widget-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-1);
+  font-size: 9px;
+}
+
+.node-widget-readonly strong {
+  overflow: hidden;
+  color: var(--text-1);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-widget-reset {
+  min-height: 25px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  font: inherit;
+  font-size: 9px;
+}
+
+.workflow-node-preview {
+  display: grid;
+  min-height: 190px;
+  place-items: center;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  background: var(--surface-2);
+  font-size: 10px;
+}
+
+.workflow-node-preview .image-preview-canvas {
+  max-height: 230px;
+}
+
+.schema-inspector-fields .node-widget-fields {
+  padding-inline: 0;
+  border-top: 0;
+  background: transparent;
+}
+
+.schema-inspector-fields .node-widget-field,
+.schema-inspector-fields .node-widget-readonly,
+.schema-inspector-fields .node-widget-checkbox {
+  font-size: 10px;
+}
+
 .workflow-node .react-flow__resize-control.handle {
   width: 24px;
   height: 24px;
@@ -907,6 +1022,28 @@
   color: var(--text-1);
   background: var(--surface-1);
   font: inherit;
+}
+
+.image-settings input[type='number'],
+.image-settings input[type='color'] {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  font: inherit;
+}
+
+.parameter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.image-settings input[type='color'] {
+  padding: 2px 4px;
 }
 
 .geometry-grid {

@@ -3,6 +3,31 @@ export const IMAGE_PREVIEW_PROTOCOL_VERSION = 1 as const
 export type PreviewMaskSource =
   'luminosity' | 'alpha' | 'red' | 'green' | 'blue'
 
+export type PreviewOperation =
+  | {
+      type: 'resize'
+      width: number
+      height: number
+      kernel: string
+    }
+  | {
+      type: 'brightness'
+      exposure: number
+      highlights: number
+      shadows: number
+      whites: number
+      blacks: number
+    }
+  | {
+      type: 'color-correction'
+      temperature: number
+      greenMagenta: number
+      hueDegrees: number
+      saturation: number
+      tint: readonly [number, number, number]
+      tintMix: number
+    }
+
 export interface ImagePreviewRequest {
   protocolVersion: typeof IMAGE_PREVIEW_PROTOCOL_VERSION
   type: 'render-preview'
@@ -15,6 +40,7 @@ export interface ImagePreviewRequest {
   maskSource: PreviewMaskSource
   invert: boolean
   maxLongEdge: number
+  operations: readonly PreviewOperation[]
 }
 
 export type ImagePreviewResponse =
@@ -62,6 +88,8 @@ export function isImagePreviewRequest(
     typeof candidate.invert === 'boolean' &&
     Number.isSafeInteger(candidate.maxLongEdge) &&
     Number(candidate.maxLongEdge) > 0 &&
-    Number(candidate.maxLongEdge) <= 2048
+    Number(candidate.maxLongEdge) <= 2048 &&
+    Array.isArray(candidate.operations) &&
+    candidate.operations.length <= 64
   )
 }

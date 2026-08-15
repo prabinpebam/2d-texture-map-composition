@@ -3,6 +3,7 @@ import {
   type ImagePreviewRequest,
   type ImagePreviewResponse,
   type PreviewMaskSource,
+  type PreviewOperation,
 } from './imagePreviewProtocol'
 
 export interface ImagePreviewResult {
@@ -71,6 +72,7 @@ export class ImagePreviewClient {
       invert: boolean
       maxLongEdge?: number
       cacheKey: string
+      operations: readonly PreviewOperation[]
     },
   ): Promise<ImagePreviewResult> {
     const generation = (this.generations.get(nodeId) ?? 0) + 1
@@ -88,6 +90,7 @@ export class ImagePreviewClient {
       maskSource: settings.maskSource,
       invert: settings.invert,
       maxLongEdge: settings.maxLongEdge ?? 1024,
+      operations: settings.operations,
     }
     return new Promise((resolve, reject) => {
       this.pending.set(requestId, { resolve, reject })

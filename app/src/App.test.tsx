@@ -79,8 +79,12 @@ describe('workspace shell', () => {
     expect(library).toHaveFocus()
   })
 
-  it('adds a catalog node through the inspector command', async () => {
+  it('adds a catalog node while the inspector is closed', async () => {
     render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Close inspector' }))
+    expect(
+      screen.queryByRole('complementary', { name: 'Inspector' }),
+    ).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Load image' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add to canvas' }))
 
