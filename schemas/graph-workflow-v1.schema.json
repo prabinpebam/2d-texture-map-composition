@@ -57,7 +57,17 @@
     },
     "node": {
       "type": "object",
-      "required": ["id", "type", "label", "position", "size", "zIndex", "bypassed", "muted", "locked"],
+      "required": [
+        "id",
+        "type",
+        "label",
+        "position",
+        "size",
+        "zIndex",
+        "bypassed",
+        "muted",
+        "locked"
+      ],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "type": { "type": "string", "minLength": 1 },
@@ -67,13 +77,21 @@
         "zIndex": { "type": "integer" },
         "bypassed": { "type": "boolean" },
         "muted": { "type": "boolean" },
-        "locked": { "type": "boolean" }
+        "locked": { "type": "boolean" },
+        "parameters": { "type": "object" }
       },
       "additionalProperties": false
     },
     "edge": {
       "type": "object",
-      "required": ["id", "sourceNodeId", "sourcePortId", "targetNodeId", "targetPortId", "order"],
+      "required": [
+        "id",
+        "sourceNodeId",
+        "sourcePortId",
+        "targetNodeId",
+        "targetPortId",
+        "order"
+      ],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "sourceNodeId": { "type": "string", "minLength": 1 },

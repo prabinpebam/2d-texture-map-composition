@@ -45,6 +45,18 @@ export type PersistenceRequest =
       persistent: boolean
     })
   | (PersistenceRequestBase & {
+      type: 'put-asset'
+      projectId: string
+      blob: Blob
+      displayName: string
+      roleHint: string
+    })
+  | (PersistenceRequestBase & {
+      type: 'get-asset'
+      projectId: string
+      digest: string
+    })
+  | (PersistenceRequestBase & {
       type: 'list-projects'
       includeTrashed: boolean
     })
@@ -98,6 +110,8 @@ export function isPersistenceRequest(
     'renew-lease',
     'release-lease',
     'record-durability',
+    'put-asset',
+    'get-asset',
     'list-projects',
     'create-project',
     'rename-project',
@@ -141,6 +155,16 @@ export function isPersistenceRequest(
   }
   if (candidate.type === 'record-durability') {
     return typeof candidate.persistent === 'boolean'
+  }
+  if (candidate.type === 'put-asset') {
+    return (
+      candidate.blob instanceof Blob &&
+      typeof candidate.displayName === 'string' &&
+      typeof candidate.roleHint === 'string'
+    )
+  }
+  if (candidate.type === 'get-asset') {
+    return typeof candidate.digest === 'string'
   }
   if (candidate.type === 'rename-project')
     return typeof candidate.name === 'string'

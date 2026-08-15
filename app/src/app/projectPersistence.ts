@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GraphDocument } from '../domain/graph'
-import { persistenceClient } from '../workers/persistenceClient'
+import { getPersistenceClient } from '../workers/persistenceClient'
 import { serializeGraphWorkflow } from '../workflow/serializeGraphWorkflow'
 
 const initializationPromises = new Map<
@@ -15,6 +15,7 @@ const initializationPromises = new Map<
     recovered: boolean
   }>
 >()
+const persistenceClient = getPersistenceClient()
 
 export type ProjectSaveStatus =
   'loading' | 'saving' | 'saved' | 'recovered' | 'error'

@@ -14,7 +14,12 @@ export interface GraphStoreState {
   undoStack: readonly GraphDocument[]
   redoStack: readonly GraphDocument[]
   connectionDiagnostic: ConnectionDiagnostic | null
-  addNode(type: string, position: { x: number; y: number }, id?: string): string
+  addNode(
+    type: string,
+    position: { x: number; y: number },
+    id?: string,
+    parameters?: Record<string, unknown>,
+  ): string
   selectNode(id: string, additive?: boolean): void
   clearSelection(): void
   moveNode(id: string, position: { x: number; y: number }): void
@@ -22,6 +27,7 @@ export interface GraphStoreState {
     id: string,
     geometry: { x: number; y: number; width: number; height: number },
   ): boolean
+  updateNodeParameters(id: string, parameters: Record<string, unknown>): boolean
   moveSelectedBy(delta: { x: number; y: number }): void
   duplicateSelected(createId?: () => string): readonly string[]
   bringSelectedToFront(): void
@@ -63,7 +69,7 @@ export function createGraphStore() {
     undoStack: [],
     redoStack: [],
     connectionDiagnostic: null,
-    addNode(type, position, id = nextNodeId()) {
+    addNode(type, position, id = nextNodeId(), parameters) {
       const state = get()
       if (state.document.nodes.some((node) => node.id === id)) {
         throw new Error(`Duplicate node ID: ${id}`)
@@ -74,6 +80,9 @@ export function createGraphStore() {
         position,
         state.document.nodes.length,
       )
+      if (parameters) {
+        node.parameters = { ...node.parameters, ...parameters }
+      }
       set({
         document: {
           ...state.document,
@@ -145,6 +154,30 @@ export function createGraphStore() {
                   ...candidate,
                   position: { x: geometry.x, y: geometry.y },
                   size: { width: geometry.width, height: geometry.height },
+                }
+              : candidate,
+          ),
+        },
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+      return true
+    },
+    updateNodeParameters(id, parameters) {
+      const state = get()
+      const node = state.document.nodes.find((candidate) => candidate.id === id)
+      if (!node || node.locked) return false
+      set({
+        document: {
+          ...state.document,
+          nodes: state.document.nodes.map((candidate) =>
+            candidate.id === id
+              ? {
+                  ...candidate,
+                  parameters: {
+                    ...candidate.parameters,
+                    ...parameters,
+                  },
                 }
               : candidate,
           ),

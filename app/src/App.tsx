@@ -11,6 +11,7 @@ import {
   Eye,
   HardDrive,
   Image,
+  ImagePlus,
   Layers3,
   LockKeyhole,
   Map,
@@ -48,6 +49,7 @@ import {
   type GraphCommandMode,
 } from './components/GraphCommandDialog'
 import { IconButton } from './components/IconButton'
+import { ImagePreviewCanvas } from './components/ImagePreviewCanvas'
 import {
   ProjectBrowserDialog,
   type LocalProjectSummary,
@@ -72,6 +74,11 @@ import {
 import { useGraphStore } from './app/graphState'
 import { NODE_TYPE_REGISTRY } from './domain/graph'
 import { serializeGraphWorkflow } from './app/graphWorkflowExport'
+import {
+  importImageAsset,
+  renderImageAssetPreview,
+  type ImageAssetPreview,
+} from './app/imageAssets'
 import {
   createLocalProject,
   createLocalProjectCopy,
@@ -158,6 +165,11 @@ function App() {
   >(() => (capabilities.indexedDb ? 'checking' : 'unavailable'))
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [workflowNotice, setWorkflowNotice] = useState<string | null>(null)
+  const [previewState, setPreviewState] = useState<
+    | { status: 'idle' | 'loading' }
+    | { status: 'ready'; result: ImageAssetPreview }
+    | { status: 'error'; message: string }
+  >({ status: 'idle' })
   const [graphCommand, setGraphCommand] = useState<GraphCommandMode | null>(
     null,
   )
@@ -176,6 +188,9 @@ function App() {
   const deleteSelected = useGraphStore((state) => state.deleteSelected)
   const moveNode = useGraphStore((state) => state.moveNode)
   const setNodeGeometry = useGraphStore((state) => state.setNodeGeometry)
+  const updateNodeParameters = useGraphStore(
+    (state) => state.updateNodeParameters,
+  )
   const moveSelectedBy = useGraphStore((state) => state.moveSelectedBy)
   const duplicateSelected = useGraphStore((state) => state.duplicateSelected)
   const bringSelectedToFront = useGraphStore(
@@ -206,6 +221,7 @@ function App() {
   const computeStatusRef = useRef<HTMLButtonElement>(null)
   const diagnosticsCloseRef = useRef<HTMLButtonElement>(null)
   const workflowInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const firstNodeMenuItemRef = useRef<HTMLButtonElement>(null)
   const projectSwitcherRef = useRef<HTMLButtonElement>(null)
 
@@ -269,6 +285,68 @@ function App() {
     targetHandle: edge.targetPortId,
     type: 'smoothstep',
   }))
+  const previewNode = graphDocument.nodes.find(
+    (node) => node.type === 'preview',
+  )
+  const previewInput = previewNode
+    ? graphDocument.edges.find(
+        (edge) =>
+          edge.targetNodeId === previewNode.id && edge.targetPortId === 'image',
+      )
+    : undefined
+  const previewSource = previewInput
+    ? graphDocument.nodes.find(
+        (node) =>
+          node.id === previewInput.sourceNodeId && node.type === 'load-image',
+      )
+    : undefined
+
+  useEffect(() => {
+    const digest = previewSource?.parameters?.assetDigest
+    if (
+      !previewNode ||
+      !previewSource ||
+      typeof digest !== 'string' ||
+      !digest
+    ) {
+      return
+    }
+    const mode = previewSource.parameters?.mode === 'mask' ? 'mask' : 'color'
+    const source = previewSource.parameters?.maskSource
+    const maskSource =
+      source === 'alpha' ||
+      source === 'red' ||
+      source === 'green' ||
+      source === 'blue'
+        ? source
+        : 'luminosity'
+    let active = true
+    queueMicrotask(() => {
+      if (active) setPreviewState({ status: 'loading' })
+    })
+    void renderImageAssetPreview(activeProject.id, previewNode.id, digest, {
+      mode,
+      maskSource,
+      invert: previewSource.parameters?.invert === true,
+    })
+      .then((result) => {
+        if (active) setPreviewState({ status: 'ready', result })
+      })
+      .catch((error: unknown) => {
+        if (
+          active &&
+          !(error instanceof Error && error.message === 'Preview superseded')
+        ) {
+          setPreviewState({
+            status: 'error',
+            message: error instanceof Error ? error.message : 'Preview failed',
+          })
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [activeProject.id, previewNode, previewSource])
 
   useEffect(() => {
     function handleRegionNavigation(event: globalThis.KeyboardEvent) {
@@ -541,6 +619,51 @@ function App() {
     )
   }
 
+  async function importImages(files: FileList) {
+    let imported = 0
+    const failures: string[] = []
+    for (const file of Array.from(files)) {
+      try {
+        const asset = await importImageAsset(activeProject.id, file)
+        const nodeCount = graphDocument.nodes.length + imported
+        addNode(
+          'load-image',
+          {
+            x: 100 + (nodeCount % 3) * 280,
+            y: 100 + Math.floor(nodeCount / 3) * 180,
+          },
+          undefined,
+          {
+            assetDigest: asset.digest,
+            fileName: asset.fileName,
+            mediaType: asset.sniffed.mediaType,
+            width: asset.sniffed.width,
+            height: asset.sniffed.height,
+            profileDecision: 'embedded-profile-or-srgb-fallback',
+            orientationDecision: 'decoder-applied-once',
+            normalizationVersion: 'import-normalization.v1',
+            mode: 'color',
+            maskSource: 'luminosity',
+            invert: false,
+          },
+        )
+        imported += 1
+      } catch (error) {
+        failures.push(
+          `${file.name}: ${error instanceof Error ? error.message : 'Import failed'}`,
+        )
+      }
+    }
+    setSelectedTemplate(
+      NODE_CATALOG.find((item) => item.id === 'load-image') ?? null,
+    )
+    setWorkflowNotice(
+      failures.length === 0
+        ? `Imported ${imported} image${imported === 1 ? '' : 's'}`
+        : `Imported ${imported}; rejected ${failures.length}: ${failures.join('; ')}`,
+    )
+  }
+
   async function refreshLocalProjects() {
     setLocalProjects(await listLocalProjects())
   }
@@ -622,6 +745,27 @@ function App() {
             <Save aria-hidden="true" size={17} />
           </IconButton>
           <span className="toolbar-separator" aria-hidden="true" />
+          <IconButton
+            disabled={projectPersistence.access !== 'writer'}
+            label="Import images"
+            onClick={() => imageInputRef.current?.click()}
+          >
+            <ImagePlus aria-hidden="true" size={17} />
+          </IconButton>
+          <input
+            accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+            aria-label="Image files"
+            className="sr-only"
+            multiple
+            onChange={(event) => {
+              const files = event.target.files
+              if (files) void importImages(files)
+              event.target.value = ''
+            }}
+            ref={imageInputRef}
+            tabIndex={-1}
+            type="file"
+          />
           <IconButton
             disabled={projectPersistence.access !== 'writer'}
             label="Import workflow"
@@ -969,6 +1113,70 @@ function App() {
               </div>
               <p className="template-summary">{selectedTemplate.summary}</p>
 
+              {selectedNode?.type === 'load-image' ? (
+                <section className="inspector-section image-settings">
+                  <h3>Image</h3>
+                  <p className="source-file-name">
+                    {typeof selectedNode.parameters?.fileName === 'string'
+                      ? selectedNode.parameters.fileName
+                      : 'No source selected'}
+                  </p>
+                  <label>
+                    Output mode
+                    <select
+                      onChange={(event) =>
+                        updateNodeParameters(selectedNode.id, {
+                          mode: event.target.value,
+                        })
+                      }
+                      value={
+                        selectedNode.parameters?.mode === 'mask'
+                          ? 'mask'
+                          : 'color'
+                      }
+                    >
+                      <option value="color">Color image</option>
+                      <option value="mask">Mask</option>
+                    </select>
+                  </label>
+                  {selectedNode.parameters?.mode === 'mask' ? (
+                    <>
+                      <label>
+                        Mask source
+                        <select
+                          onChange={(event) =>
+                            updateNodeParameters(selectedNode.id, {
+                              maskSource: event.target.value,
+                            })
+                          }
+                          value={String(
+                            selectedNode.parameters?.maskSource ?? 'luminosity',
+                          )}
+                        >
+                          <option value="luminosity">Luminosity</option>
+                          <option value="alpha">Alpha</option>
+                          <option value="red">Red</option>
+                          <option value="green">Green</option>
+                          <option value="blue">Blue</option>
+                        </select>
+                      </label>
+                      <label className="checkbox-setting">
+                        <input
+                          checked={selectedNode.parameters?.invert === true}
+                          onChange={(event) =>
+                            updateNodeParameters(selectedNode.id, {
+                              invert: event.target.checked,
+                            })
+                          }
+                          type="checkbox"
+                        />
+                        Invert mask
+                      </label>
+                    </>
+                  ) : null}
+                </section>
+              ) : null}
+
               <button
                 className="primary-command"
                 disabled={projectPersistence.access !== 'writer'}
@@ -996,6 +1204,26 @@ function App() {
                   </span>
                 </div>
               </section>
+              {previewNode ? (
+                <section className="inspector-section preview-surface">
+                  <h3>Preview</h3>
+                  {!previewSource ? (
+                    <p>Connect a Load image node.</p>
+                  ) : previewState.status === 'loading' ? (
+                    <p role="status">Rendering preview</p>
+                  ) : previewState.status === 'error' ? (
+                    <p role="alert">{previewState.message}</p>
+                  ) : previewState.status === 'ready' ? (
+                    <>
+                      <ImagePreviewCanvas result={previewState.result} />
+                      <p>
+                        {previewState.result.sourceWidth} ×{' '}
+                        {previewState.result.sourceHeight} source
+                      </p>
+                    </>
+                  ) : null}
+                </section>
+              ) : null}
             </div>
           ) : (
             <div className="inspector-empty">

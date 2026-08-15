@@ -78,6 +78,29 @@ describe('graph command store', () => {
     ).toBe(false)
   })
 
+  it('updates authored node parameters as one undoable command', () => {
+    const store = createGraphStore()
+    store.getState().addNode('load-image', { x: 0, y: 0 }, 'source')
+    expect(
+      store.getState().updateNodeParameters('source', {
+        assetDigest: 'digest-1',
+        mode: 'mask',
+        maskSource: 'alpha',
+      }),
+    ).toBe(true)
+    expect(store.getState().document.nodes[0].parameters).toMatchObject({
+      assetDigest: 'digest-1',
+      mode: 'mask',
+      maskSource: 'alpha',
+      invert: false,
+    })
+    store.getState().undo()
+    expect(store.getState().document.nodes[0].parameters).toMatchObject({
+      assetDigest: null,
+      mode: 'color',
+    })
+  })
+
   it('duplicates selected nodes and toggles supported authored states', () => {
     const store = createGraphStore()
     store.getState().addNode('resize', { x: 0, y: 0 }, 'resize-a')

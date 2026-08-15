@@ -74,6 +74,15 @@ async function execute(request: PersistenceRequest): Promise<unknown> {
         request.persistent,
       )
       return null
+    case 'put-asset':
+      return repository.putAsset(
+        request.projectId,
+        request.blob,
+        request.displayName,
+        request.roleHint,
+      )
+    case 'get-asset':
+      return repository.getAsset(request.digest)
     case 'list-projects':
       return repository.listProjects(request.includeTrashed)
     case 'create-project': {

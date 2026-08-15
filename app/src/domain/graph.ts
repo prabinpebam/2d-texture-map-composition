@@ -31,6 +31,7 @@ export interface GraphNode {
   bypassed: boolean
   muted: boolean
   locked: boolean
+  parameters?: Record<string, unknown>
 }
 
 export interface GraphEdge {
@@ -197,6 +198,16 @@ export function createGraphNode(
     bypassed: false,
     muted: false,
     locked: false,
+    parameters:
+      type === 'load-image'
+        ? {
+            assetDigest: null,
+            fileName: null,
+            mode: 'color',
+            maskSource: 'luminosity',
+            invert: false,
+          }
+        : {},
   }
 }
 

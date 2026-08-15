@@ -1,4 +1,5 @@
 import type {
+  AssetRecord,
   LeaseClaimResult,
   ProjectRecord,
 } from '../storage/projectRepository'
@@ -130,6 +131,29 @@ export class PersistenceClient {
     })
   }
 
+  putAsset(
+    projectId: string,
+    blob: Blob,
+    displayName: string,
+    roleHint: string,
+  ) {
+    return this.request<string>({
+      type: 'put-asset',
+      projectId,
+      blob,
+      displayName,
+      roleHint,
+    })
+  }
+
+  getAsset(projectId: string, digest: string) {
+    return this.request<AssetRecord | null>({
+      type: 'get-asset',
+      projectId,
+      digest,
+    })
+  }
+
   listProjects() {
     return this.request<ProjectRecord[]>({
       type: 'list-projects',
@@ -163,4 +187,9 @@ export class PersistenceClient {
   }
 }
 
-export const persistenceClient = new PersistenceClient()
+let persistenceClient: PersistenceClient | null = null
+
+export function getPersistenceClient(): PersistenceClient {
+  persistenceClient ??= new PersistenceClient()
+  return persistenceClient
+}

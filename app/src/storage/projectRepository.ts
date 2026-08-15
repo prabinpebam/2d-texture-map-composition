@@ -485,6 +485,10 @@ export class ProjectRepository {
     return digest
   }
 
+  async getAsset(digest: string): Promise<AssetRecord | null> {
+    return (await this.database.assets.get(digest)) ?? null
+  }
+
   close(): void {
     this.database.close()
   }

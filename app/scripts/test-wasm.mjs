@@ -14,11 +14,13 @@ const {
   deallocate_f32: deallocate,
 } = instance.exports
 const processTile = instance.exports.linear_dodge_tile_f32
+const extractMask = instance.exports.extract_mask_rgba_f32
 
 assert.ok(memory instanceof WebAssembly.Memory)
 assert.equal(typeof allocate, 'function')
 assert.equal(typeof deallocate, 'function')
 assert.equal(typeof processTile, 'function')
+assert.equal(typeof extractMask, 'function')
 
 const input = new Float32Array([-0.5, 0, 0.25, 0.75, 1])
 const expected = Array.from(input, (value) =>
@@ -39,4 +41,22 @@ try {
   deallocate(pointer, input.length)
 }
 
-console.log('WASM parity: 5 scalar branch vectors passed')
+const rgba = new Float32Array([0.25, 0.5, 0.75, 0.4])
+const expectedMasks = [0.4649, 0.4, 0.25, 0.5, 0.75]
+const maskPointer = allocate(rgba.length)
+try {
+  for (let source = 0; source < expectedMasks.length; source += 1) {
+    new Float32Array(memory.buffer, maskPointer, rgba.length).set(rgba)
+    extractMask(maskPointer, 1, source, 0)
+    const value = new Float32Array(memory.buffer, maskPointer, 1)[0]
+    assert.ok(Math.abs(value - expectedMasks[source]) <= 1e-6)
+  }
+  new Float32Array(memory.buffer, maskPointer, rgba.length).set(rgba)
+  extractMask(maskPointer, 1, 1, 1)
+  const invertedAlpha = new Float32Array(memory.buffer, maskPointer, 1)[0]
+  assert.ok(Math.abs(invertedAlpha - 0.6) <= 1e-6)
+} finally {
+  deallocate(maskPointer, rgba.length)
+}
+
+console.log('WASM parity: 11 scalar and mask branch vectors passed')
