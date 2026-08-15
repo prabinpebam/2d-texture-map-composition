@@ -272,6 +272,12 @@ closure is blocked until R1 passes.
 - R1.14 Convert node bodies to container-responsive layouts so Load Image and
   Preview media fill remaining resized space, compact controls reflow, and resize
   remains render-only until one authored release commit.
+- R1.15 Add reusable raw node-layout capture and independent overflow/hit-test
+  detectors; run the matrix across node types, execution states, media aspects,
+  and compact/default/wide/tall bounds instead of relying on manual screenshots.
+- R1.16 Apply React Flow's custom-node structure with a measurable overflow-visible
+  handle/resizer root and inset overflow-hidden rounded surface; verify normal,
+  selected, locked, and bypassed paint without clipping sockets.
 
 **Exit evidence**
 
@@ -303,6 +309,11 @@ closure is blocked until R1 passes.
 - Resizing a media node continuously changes the actual painted canvas area in
   proportion to available bounds, preserves aspect and controls, and creates one
   persisted size command without worker activity.
+- Automated layout-matrix evaluation reports zero undeclared overflow, clipping,
+  overlap, inaccessible controls, or blank media and retains raw geometry plus
+  screenshots sufficient to diagnose any failure without manual inspection.
+- Surface geometry capture proves rounded clipping exactly matches node bounds and
+  socket geometry proves each connector remains fully visible and hit-testable.
 
 ### M5: Resize and correction nodes
 

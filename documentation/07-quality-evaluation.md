@@ -212,6 +212,8 @@ alpha defects. Diff images are evidence, not the sole detector.
 | E2E-022 | ComfyUI Load Image ingestion | Browse, direct node drop, and clipboard image paste/replace; actual in-node pixel/metadata thumbnail; persisted reload and invalid-input recovery |
 | E2E-023 | Explicit-run-only execution | connect/edit/move/resize produce no queue record, output generation, or worker execution; Run produces one captured revision; later edits leave that result stale until the next Run |
 | E2E-024 | Responsive node resize | pointer-resize Load Image/Preview at intermediate and final bounds; canvas painted area grows with available node space, aspect/controls/sockets remain valid, no run record/generation changes, one size undo commit |
+| E2E-025 | Node content containment matrix | raw descendant rectangles/computed visibility for empty/loading/result/stale/error nodes at compact/default/wide/tall bounds; detector rejects content outside owner except declared sockets/resize affordances; portrait/landscape canvas pixels and screenshots retained |
+| E2E-026 | Rounded surface and external sockets | inner surface rectangle/radius/hidden overflow in normal/selected/locked/bypassed states; sockets cross outer bounds, remain fully painted/hit-testable, and links attach to measured centers |
 
 Playwright must use real event input. DOM presence/classes alone do not prove
 visibility or usability. Overlays, menus, dialogs, ports, and previews require
@@ -228,6 +230,15 @@ Node-insertion evidence captures viewport transform and graph/node rectangles.
 The detector converts the requested screen point to graph space and verifies the
 created node center within 2 CSS pixels after pan/zoom. It also proves a library
 drop outside the graph and chooser Escape create no node or undo entry.
+
+Node layout capture is reusable and agenda-free: for every visible descendant it
+records tag, classes, role/name, client rectangle, computed display/visibility/
+opacity/overflow, scroll/client extents, and owning node rectangle. Detection runs
+after capture and rejects overlap outside the owner, clipped required controls,
+scroll overflow, zero-area paint, incoherent hit testing, and media outside its
+preview track. Only socket circles/hit areas and resize affordances may cross the
+outer node boundary. The same detector runs across node types, state variants,
+portrait/landscape media, and compact/default/wide/tall sizes.
 
 ## 9. Accessibility Evaluation
 

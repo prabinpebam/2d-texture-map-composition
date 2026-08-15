@@ -583,6 +583,131 @@ test('large graph remains visibly interactive at 300 nodes', async ({
   })
 })
 
+test('expanded Comfy controls remain usable at 25 nodes', async ({
+  page,
+}, testInfo) => {
+  const types = [
+    ['resize', 'Resize', 280, 430],
+    ['brightness-correction', 'Brightness', 280, 470],
+    ['color-correction', 'Color correction', 280, 520],
+    ['load-image', 'Load image', 280, 420],
+    ['preview', 'Image preview', 320, 360],
+  ] as const
+  const nodes = Array.from({ length: 25 }, (_, index) => {
+    const [type, label, width, height] = types[index % types.length]
+    return {
+      id: `expanded-${index}`,
+      type,
+      label,
+      position: {
+        x: (index % 5) * 360 + 100,
+        y: Math.floor(index / 5) * 560 + 100,
+      },
+      size: { width, height },
+      zIndex: index,
+      bypassed: false,
+      muted: false,
+      locked: false,
+    }
+  })
+  const workflow = JSON.stringify({
+    format: 'textureflow-workflow',
+    formatVersion: '1.0.0',
+    project: {
+      id: 'expanded-project',
+      name: '25 expanded nodes',
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+    nodes,
+    edges: [],
+  })
+
+  await page.goto('/')
+  await page.getByLabel('Workflow file').setInputFiles({
+    name: 'expanded.textureflow.json',
+    mimeType: 'application/vnd.textureflow.workflow+json',
+    buffer: Buffer.from(workflow),
+  })
+  await expect(page.getByText('Imported 25 nodes and 0 edges')).toBeVisible()
+  await expect(page.locator('.react-flow__node')).toHaveCount(25)
+  await expect(page.locator('.parameter-handle')).toHaveCount(85)
+
+  const firstResize = page.getByLabel('Resize node').first()
+  const firstBrightness = page.getByLabel('Brightness node').first()
+  const [resizeBounds, brightnessBounds] = await Promise.all([
+    firstResize.boundingBox(),
+    firstBrightness.boundingBox(),
+  ])
+  expect(resizeBounds).not.toBeNull()
+  expect(brightnessBounds).not.toBeNull()
+  expect(resizeBounds!.x + resizeBounds!.width).toBeLessThanOrEqual(
+    brightnessBounds!.x,
+  )
+  expect(
+    await firstResize
+      .getByLabel('Width parameter input')
+      .evaluate((element) => {
+        const box = element.getBoundingClientRect()
+        const hit = document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+        )
+        return hit === element || element.contains(hit)
+      }),
+  ).toBe(true)
+
+  await page.evaluate(() => {
+    const target = window as typeof window & { expandedInputLatency?: number }
+    document.addEventListener(
+      'input',
+      () => {
+        const started = performance.now()
+        requestAnimationFrame(() => {
+          target.expandedInputLatency = performance.now() - started
+        })
+      },
+      { capture: true, once: true },
+    )
+  })
+  await firstResize
+    .getByRole('spinbutton', { name: 'Resize Width', exact: true })
+    .fill('513')
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as typeof window & { expandedInputLatency?: number })
+            .expandedInputLatency,
+      ),
+    )
+    .toBeLessThan(100)
+  expect(await getAxeViolations(page)).toEqual([])
+
+  const inputLatency = await page.evaluate(
+    () =>
+      (window as typeof window & { expandedInputLatency?: number })
+        .expandedInputLatency,
+  )
+  const screenshotPath = testInfo.outputPath('r1-25-expanded-nodes.png')
+  await page.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('r1-25-expanded-nodes', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+  await testInfo.attach('r1-25-expanded-evidence', {
+    body: JSON.stringify(
+      {
+        nodeCount: 25,
+        parameterSocketCount: 85,
+        inputEventToPaintMilliseconds: inputLatency,
+      },
+      null,
+      2,
+    ),
+    contentType: 'application/json',
+  })
+})
+
 test('user can search outline and resize a node with pointer input', async ({
   page,
 }, testInfo) => {

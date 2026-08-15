@@ -81,6 +81,17 @@ that it is externally driven, and retains the fallback for restoration.
 
 ## 4. Node anatomy and gestures
 
+React Flow implementation follows its official custom-node, handles, and
+NodeResizer guidance (`reactflow.dev/learn/customization/custom-nodes`,
+`reactflow.dev/learn/customization/handles`, and
+`reactflow.dev/examples/nodes/node-resizer`): React Flow owns the interactive node
+wrapper; each socket is a measurable `<Handle>` with a unique ID and manually
+positioned side offset; dynamic handle layouts refresh node internals; and
+`NodeResizer` remains in the custom node. Therefore the interaction root stays
+overflow-visible. An inset visual surface owns rounded border/background/
+selection paint with overflow hidden, while media/footer regions independently
+contain their content. The whole node root is never clipped around its handles.
+
 The node shell is ordered as:
 
 1. colored title bar with title and compact state;
@@ -144,6 +155,12 @@ view mode. The authored size commits once at pointer release and round-trips.
 - R1.14 Make node contents container-responsive: preview/source/result surfaces
   fill available node space during resize, controls reflow at narrow widths, and
   resizing triggers no workflow compute.
+- R1.15 Add a reusable node geometry capture/detector matrix so content fit,
+  socket exceptions, hit testing, and media paint are enforced automatically for
+  all node states and supported size/aspect variants.
+- R1.16 Adopt the React Flow outer-interaction/inner-surface node structure:
+  overflow-visible handles and resize controls outside an inset rounded,
+  overflow-hidden visual surface, with automated radius/socket geometry evidence.
 
 R1.7-R1.10 block R1 closure and user-facing M5 closure. Previously valid graph,
 persistence, numerical, worker, preview, and explicit-run evidence remains valid
@@ -172,3 +189,6 @@ unless a new parameter-edge execution test falsifies it.
 - Increasing Preview or Load Image bounds measurably increases its painted image
   area during the pointer gesture; shrinking preserves usable controls, sockets,
   aspect ratio, and stable hit targets without recomputation.
+- Rounded corners remain visibly intact in normal/selected/locked/bypassed states;
+  the inner surface covers the exact owner rectangle and clips internal paint,
+  while every socket still straddles and hit-tests outside that rectangle.

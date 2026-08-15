@@ -44,6 +44,8 @@ export function NodeWidgetFields({
               className={`parameter-handle port-${field.inputType}`}
               id={parameterPortId(field.key)}
               position={Position.Left}
+              role="button"
+              tabIndex={0}
               type="target"
             />
           ) : null

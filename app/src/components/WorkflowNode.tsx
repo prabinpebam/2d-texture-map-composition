@@ -140,6 +140,7 @@ export function WorkflowNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
           })
         }
       />
+      <div aria-hidden="true" className="workflow-node-surface" />
       <div className="workflow-node-header drag-handle">
         <span className="workflow-node-mark" aria-hidden="true" />
         {data.renaming ? (
@@ -174,6 +175,8 @@ export function WorkflowNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
                 className={`port-${port.accepts[0]}`}
                 id={port.id}
                 position={Position.Left}
+                role="button"
+                tabIndex={0}
                 type="target"
               />
               {port.label}
@@ -189,6 +192,8 @@ export function WorkflowNode({ data, selected }: NodeProps<WorkflowFlowNode>) {
                 className={`port-${port.dataType}`}
                 id={port.id}
                 position={Position.Right}
+                role="button"
+                tabIndex={0}
                 type="source"
               />
             </span>
