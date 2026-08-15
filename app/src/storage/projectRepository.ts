@@ -10,6 +10,7 @@ export interface ProjectRecord {
   schemaVersion: 1
   appVersion: string
   persistent: boolean
+  persistenceRequested?: boolean
   trashedAt?: number
 }
 
@@ -145,6 +146,7 @@ export class ProjectRepository {
       schemaVersion: 1,
       appVersion: '0.1.0',
       persistent: false,
+      persistenceRequested: false,
     }
     await this.database.projects.add(project)
     return project
@@ -167,6 +169,18 @@ export class ProjectRepository {
     }
     const updated = await this.database.projects.update(projectId, {
       name: normalizedName,
+      modifiedAt: Date.now(),
+    })
+    if (updated === 0) throw new Error(`Unknown project: ${projectId}`)
+  }
+
+  async recordPersistenceDecision(
+    projectId: string,
+    persistent: boolean,
+  ): Promise<void> {
+    const updated = await this.database.projects.update(projectId, {
+      persistent,
+      persistenceRequested: true,
       modifiedAt: Date.now(),
     })
     if (updated === 0) throw new Error(`Unknown project: ${projectId}`)

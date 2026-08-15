@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GraphDocument } from '../domain/graph'
-import { ProjectRepository } from '../storage/projectRepository'
+import { persistenceClient } from '../workers/persistenceClient'
 import { serializeGraphWorkflow } from '../workflow/serializeGraphWorkflow'
 
-const repository = new ProjectRepository()
 const initializationPromises = new Map<
   string,
   Promise<{
     document: GraphDocument | null
     workflowJson: string | null
+    viewport: { x: number; y: number; zoom: number }
+    revision: number
+    persistenceRequested: boolean
+    persistent: boolean
     recovered: boolean
   }>
 >()
@@ -37,33 +40,33 @@ function getTabId(): string {
 
 function serialize(
   document: GraphDocument,
+  viewport: { x: number; y: number; zoom: number },
   projectId: string,
   projectName: string,
 ): string {
   return serializeGraphWorkflow(document, {
     id: projectId,
     name: projectName,
-    viewport: { x: 0, y: 0, zoom: 1 },
+    viewport,
   })
 }
 
 async function initializeProject(projectId: string, projectName: string) {
-  const existing = await repository.database.projects.get(projectId)
-  if (!existing) {
-    await repository.createProject(projectId, projectName)
-  }
-  const [loaded, checkpoint] = await Promise.all([
-    repository.loadProject(projectId),
-    repository.loadCheckpoint(projectId),
-  ])
-  const useCheckpoint = Boolean(
-    checkpoint && (!loaded || checkpoint.revision > loaded.snapshot.revision),
+  const result = await persistenceClient.initializeProject(
+    projectId,
+    projectName,
   )
-  const workflowJson = useCheckpoint
-    ? await checkpoint!.workflowJson.text()
-    : loaded?.workflowJson
+  const { workflowJson } = result
   if (!workflowJson) {
-    return { document: null, workflowJson: null, recovered: false }
+    return {
+      document: null,
+      workflowJson: null,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      revision: result.revision,
+      persistenceRequested: result.persistenceRequested,
+      persistent: result.persistent,
+      recovered: false,
+    }
   }
   const { parseGraphWorkflow } = await import('./graphWorkflowBoundary')
   const parsed = parseGraphWorkflow(workflowJson)
@@ -71,13 +74,21 @@ async function initializeProject(projectId: string, projectName: string) {
   return {
     document: parsed.document,
     workflowJson,
-    recovered: useCheckpoint || Boolean(loaded?.recoveredFromPriorSnapshot),
+    viewport: parsed.workflow.project.viewport,
+    revision: result.revision,
+    persistenceRequested: result.persistenceRequested,
+    persistent: result.persistent,
+    recovered: result.recovered,
   }
 }
 
 export function useProjectPersistence(
   document: GraphDocument,
-  hydrateDocument: (document: GraphDocument) => void,
+  viewport: { x: number; y: number; zoom: number },
+  hydrateDocument: (
+    document: GraphDocument,
+    viewport: { x: number; y: number; zoom: number },
+  ) => void,
   projectId: string,
   projectName: string,
 ): ProjectPersistenceState {
@@ -99,6 +110,7 @@ export function useProjectPersistence(
   }>({ projectId: '', access: 'claiming', token: null, foreignTabId: null })
   const [leaseAttempt, setLeaseAttempt] = useState(0)
   const lastSavedJson = useRef<string | null>(null)
+  const latestRevision = useRef(0)
   const saveQueue = useRef(Promise.resolve())
   const persistenceRequestedFor = useRef<string | null>(null)
   const ready = readyProjectId === projectId
@@ -109,9 +121,13 @@ export function useProjectPersistence(
   const leaseToken =
     leaseState.projectId === projectId ? leaseState.token : null
   const latestDocument = useRef(document)
+  const latestViewport = useRef(viewport)
   useEffect(() => {
     latestDocument.current = document
   }, [document])
+  useEffect(() => {
+    latestViewport.current = viewport
+  }, [viewport])
 
   const refreshStorageEstimate = useCallback(async () => {
     const estimate = await navigator.storage?.estimate?.()
@@ -128,12 +144,12 @@ export function useProjectPersistence(
       }
       setStatus('saving')
       const operation = saveQueue.current.then(async () => {
-        await repository.saveSnapshotWithQuotaRecovery(
+        const result = await persistenceClient.saveSnapshot(
           projectId,
           workflowJson,
-          undefined,
           leaseToken,
         )
+        latestRevision.current = result.revision
         lastSavedJson.current = workflowJson
         await refreshStorageEstimate()
         setStatus('saved')
@@ -147,7 +163,7 @@ export function useProjectPersistence(
   useEffect(() => {
     let active = true
     lastSavedJson.current = null
-    hydrateDocument({ nodes: [], edges: [] })
+    hydrateDocument({ nodes: [], edges: [] }, { x: 0, y: 0, zoom: 1 })
     let initializationPromise = initializationPromises.get(projectId)
     if (!initializationPromise) {
       initializationPromise = initializeProject(projectId, projectName)
@@ -160,8 +176,16 @@ export function useProjectPersistence(
           initializationPromises.delete(projectId)
         }
         if (!active) return
-        if (result.document) hydrateDocument(result.document)
+        if (result.document) hydrateDocument(result.document, result.viewport)
         lastSavedJson.current = result.workflowJson
+        latestRevision.current = result.revision
+        if (result.persistenceRequested) {
+          persistenceRequestedFor.current = projectId
+          setDurabilityState({
+            projectId,
+            value: result.persistent ? 'persistent' : 'best-effort',
+          })
+        }
         setReadyProjectId(projectId)
         setStatus(result.recovered ? 'recovered' : 'saved')
         void refreshStorageEstimate()
@@ -187,12 +211,12 @@ export function useProjectPersistence(
     let renewalTimer = 0
     const tabId = getTabId()
 
-    void repository
+    void persistenceClient
       .claimLease(projectId, tabId)
       .then((result) => {
         if (!active) {
           if (result.acquired) {
-            void repository.releaseLease(projectId, result.lease.token)
+            void persistenceClient.releaseLease(projectId, result.lease.token)
           }
           return
         }
@@ -213,15 +237,8 @@ export function useProjectPersistence(
           foreignTabId: null,
         })
         renewalTimer = window.setInterval(() => {
-          void repository.database.projects
-            .get(projectId)
-            .then((project) =>
-              repository.renewLease(
-                projectId,
-                ownedToken!,
-                project?.revision ?? 0,
-              ),
-            )
+          void persistenceClient
+            .renewLease(projectId, ownedToken!, latestRevision.current)
             .then((renewed) => {
               if (!renewed && active) {
                 setLeaseState({
@@ -248,20 +265,30 @@ export function useProjectPersistence(
     return () => {
       active = false
       window.clearInterval(renewalTimer)
-      if (ownedToken) void repository.releaseLease(projectId, ownedToken)
+      if (ownedToken) {
+        void persistenceClient.releaseLease(projectId, ownedToken)
+      }
     }
   }, [leaseAttempt, projectId, ready])
 
   useEffect(() => {
     if (!ready || access !== 'writer') return
-    const workflowJson = serialize(document, projectId, projectName)
+    const workflowJson = serialize(document, viewport, projectId, projectName)
     if (workflowJson === lastSavedJson.current) return
 
     const timeout = window.setTimeout(() => {
       void persistWorkflow(workflowJson)
     }, 500)
     return () => window.clearTimeout(timeout)
-  }, [access, document, persistWorkflow, projectId, projectName, ready])
+  }, [
+    access,
+    document,
+    persistWorkflow,
+    projectId,
+    projectName,
+    ready,
+    viewport,
+  ])
 
   useEffect(() => {
     if (
@@ -274,31 +301,31 @@ export function useProjectPersistence(
     persistenceRequestedFor.current = projectId
     void navigator.storage
       ?.persist?.()
-      .then((persistent) =>
+      .then((persistent) => {
         setDurabilityState({
           projectId,
           value: persistent ? 'persistent' : 'best-effort',
-        }),
-      )
-      .catch(() => setDurabilityState({ projectId, value: 'best-effort' }))
+        })
+        return persistenceClient.recordDurability(projectId, persistent)
+      })
+      .catch(() => {
+        setDurabilityState({ projectId, value: 'best-effort' })
+        return persistenceClient
+          .recordDurability(projectId, false)
+          .catch(() => undefined)
+      })
   }, [document.nodes.length, projectId, ready])
   useEffect(() => {
     if (!ready || access !== 'writer') return
     function checkpoint() {
       const workflowJson = serialize(
         latestDocument.current,
+        latestViewport.current,
         projectId,
         projectName,
       )
-      void repository.database.projects
-        .get(projectId)
-        .then((project) =>
-          repository.saveCheckpoint(
-            projectId,
-            workflowJson,
-            (project?.revision ?? 0) + 1,
-          ),
-        )
+      void persistenceClient
+        .saveCheckpoint(projectId, workflowJson, latestRevision.current + 1)
         .catch(() => undefined)
     }
     function checkpointWhenHidden() {
@@ -325,7 +352,7 @@ export function useProjectPersistence(
     channel.close()
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 2100))
-      const result = await repository.claimLease(projectId, getTabId())
+      const result = await persistenceClient.claimLease(projectId, getTabId())
       if (result.acquired) {
         setLeaseState({
           projectId,
@@ -347,38 +374,42 @@ export function useProjectPersistence(
     durability,
     usageBytes: storageEstimate.usageBytes,
     quotaBytes: storageEstimate.quotaBytes,
-    saveNow: () => persistWorkflow(serialize(document, projectId, projectName)),
+    saveNow: () =>
+      persistWorkflow(serialize(document, viewport, projectId, projectName)),
     takeOver,
   }
 }
 
 export function listLocalProjects() {
-  return repository.listProjects(true)
+  return persistenceClient.listProjects()
 }
 
 export async function createLocalProject(name: string) {
-  const project = await repository.createProject(crypto.randomUUID(), name)
+  const project = await persistenceClient.createProject(
+    crypto.randomUUID(),
+    name,
+  )
   initializationPromises.delete(project.id)
   return project
 }
 
 export async function renameLocalProject(projectId: string, name: string) {
-  await repository.renameProject(projectId, name)
+  await persistenceClient.renameProject(projectId, name)
   initializationPromises.delete(projectId)
 }
 
 export async function deleteLocalProject(projectId: string) {
-  await repository.deleteProject(projectId)
+  await persistenceClient.deleteProject(projectId)
   initializationPromises.delete(projectId)
 }
 
 export async function trashLocalProject(projectId: string) {
-  await repository.trashProject(projectId)
+  await persistenceClient.trashProject(projectId)
   initializationPromises.delete(projectId)
 }
 
 export async function restoreLocalProject(projectId: string) {
-  await repository.restoreProject(projectId)
+  await persistenceClient.restoreProject(projectId)
   initializationPromises.delete(projectId)
 }
 
@@ -386,9 +417,18 @@ export async function createLocalProjectCopy(
   name: string,
   document: GraphDocument,
 ) {
-  const project = await repository.createProject(crypto.randomUUID(), name)
-  const workflowJson = serialize(document, project.id, project.name)
-  await repository.saveSnapshot(project.id, workflowJson)
+  const projectId = crypto.randomUUID()
+  const workflowJson = serialize(
+    document,
+    { x: 0, y: 0, zoom: 1 },
+    projectId,
+    name,
+  )
+  const project = await persistenceClient.createProject(
+    projectId,
+    name,
+    workflowJson,
+  )
   initializationPromises.delete(project.id)
   return project
 }

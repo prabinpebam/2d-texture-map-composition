@@ -2,14 +2,14 @@
 
 ## Status
 
-The detailing phase and implementation milestones M0-M2 are complete. The
+The detailing phase and implementation milestones M0-M3 are complete. The
 repository now contains a validated workspace foundation, scalar processing
 oracle, Rust/WASM worker prototype, bounded tile and PNG-envelope adapters,
-storage recovery proof, typed accessible graph authoring, graph workflow v1,
-architecture decisions, and mandatory Playwright UX evaluation against the actual
-app in Microsoft Edge. Product feature milestones M3-M10 remain to be implemented.
-Failed M1 capability spikes remain intentionally hidden or bounded rather than
-treated as completed product work.
+transactional worker-owned local persistence, typed accessible graph authoring,
+graph workflow v1, architecture decisions, and mandatory Playwright UX evaluation
+against the actual app in Microsoft Edge. Product feature milestones M4-M10 remain
+to be implemented. Failed M1 capability spikes remain intentionally hidden or
+bounded rather than treated as completed product work.
 
 The human-authored `seed-spec.md` is immutable and remains the source of product
 intent. Derived documents resolve ambiguities without changing that reference.
@@ -49,7 +49,7 @@ honor these M1 results:
 - Exact HSL picker visual parity remains blocked until the approved design source
   is supplied or behavior-only visuals are explicitly accepted before M8.2.
 
-These constraints do not block M3 local persistence.
+These constraints do not block M4 load, mask, and preview work.
 
 ## Change Rules
 

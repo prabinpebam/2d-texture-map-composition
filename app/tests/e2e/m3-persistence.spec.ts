@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixtures'
 
 async function expectSnapshotContains(
   page: Page,
@@ -346,6 +346,46 @@ test('IndexedDB v1 data migrates to v2 without losing authored records', async (
   })
 })
 
+test('persistence worker fails closed for unknown browser messages', async ({
+  page,
+}) => {
+  await page.goto('/')
+  const response = await page.evaluate(async () => {
+    const worker = new Worker('/src/workers/persistence.worker.ts', {
+      type: 'module',
+    })
+    try {
+      return await new Promise<unknown>((resolve, reject) => {
+        const timeout = window.setTimeout(
+          () => reject(new Error('Persistence worker response timed out')),
+          3000,
+        )
+        worker.addEventListener(
+          'message',
+          (event) => {
+            window.clearTimeout(timeout)
+            resolve(event.data)
+          },
+          { once: true },
+        )
+        worker.postMessage({
+          protocolVersion: 1,
+          requestId: 'invalid-request',
+          type: 'unknown',
+        })
+      })
+    } finally {
+      worker.terminate()
+    }
+  })
+  expect(response).toEqual({
+    protocolVersion: 1,
+    requestId: 'unknown',
+    ok: false,
+    error: 'Unknown or invalid persistence worker message',
+  })
+})
+
 test('pagehide checkpoint restores newer draft and quota retry reclaims previews', async ({
   page,
 }, testInfo) => {
@@ -482,6 +522,8 @@ test('user graph autosaves locally and restores after reload', async ({
   await page.getByRole('button', { name: 'Load image' }).click()
   await page.getByRole('button', { name: 'Add to canvas' }).click()
   await expect(page.getByLabel('Load image node')).toBeVisible()
+  await page.getByRole('button', { name: 'Zoom In' }).click()
+  await expect(page.getByText('120%', { exact: true })).toBeVisible()
   await expect
     .poll(() =>
       page.evaluate(async () => {
@@ -493,9 +535,15 @@ test('user graph autosaves locally and restores after reload', async ({
           const snapshot = project?.currentSnapshotId
             ? await database.snapshots.get(project.currentSnapshotId)
             : null
-          return snapshot
-            ? (await snapshot.workflowJson.text()).includes('load-image')
-            : false
+          if (!snapshot) return false
+          const workflow = JSON.parse(await snapshot.workflowJson.text()) as {
+            nodes: { type: string }[]
+            project: { viewport: { zoom: number } }
+          }
+          return (
+            workflow.nodes.some((node) => node.type === 'load-image') &&
+            workflow.project.viewport.zoom > 1
+          )
         } finally {
           database.close()
         }
@@ -518,6 +566,13 @@ test('user graph autosaves locally and restores after reload', async ({
         currentSnapshotId: project?.currentSnapshotId,
         snapshotComplete: snapshot?.complete,
         snapshotDigestLength: snapshot?.sha256.length,
+        viewportZoom: snapshot
+          ? (
+              JSON.parse(await snapshot.workflowJson.text()) as {
+                project: { viewport: { zoom: number } }
+              }
+            ).project.viewport.zoom
+          : null,
       }
     } finally {
       database.close()
@@ -527,6 +582,7 @@ test('user graph autosaves locally and restores after reload', async ({
   expect(saved.currentSnapshotId).toBeTruthy()
   expect(saved.snapshotComplete).toBe(true)
   expect(saved.snapshotDigestLength).toBe(64)
+  expect(saved.viewportZoom).toBeCloseTo(1.2, 2)
 
   await page.reload()
   const restoredNode = page.getByLabel('Load image node')
@@ -567,6 +623,7 @@ test('user graph autosaves locally and restores after reload', async ({
   expect(paint.bounds.height, JSON.stringify(paint)).toBeGreaterThan(0)
   await expect(restoredNode).toBeVisible()
   await expect(page.getByText('1 nodes', { exact: true })).toBeVisible()
+  await expect(page.getByText('120%', { exact: true })).toBeVisible()
   await expect(page.getByText('Saved locally')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled()
 
@@ -582,16 +639,68 @@ test('user graph autosaves locally and restores after reload', async ({
   })
 })
 
+test('queued explicit saves publish only the latest authored graph', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Save project' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Load image' }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+  await page.getByRole('button', { name: 'Save project' }).click()
+  await page.getByRole('button', { name: 'Light', exact: true }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+  await page.getByRole('button', { name: 'Save project' }).click()
+
+  await expectSnapshotContains(page, 'untitled-workflow', 'light')
+  const evidence = await page.evaluate(async () => {
+    const moduleUrl = '/src/storage/projectRepository.ts'
+    const { TextureFlowDatabase } = await import(moduleUrl)
+    const database = new TextureFlowDatabase('textureflow')
+    try {
+      const project = await database.projects.get('untitled-workflow')
+      const snapshot = project?.currentSnapshotId
+        ? await database.snapshots.get(project.currentSnapshotId)
+        : null
+      const workflowJson = snapshot ? await snapshot.workflowJson.text() : ''
+      return {
+        revision: project?.revision,
+        snapshotCount: await database.snapshots
+          .where('projectId')
+          .equals('untitled-workflow')
+          .count(),
+        hasLoadImage: workflowJson.includes('load-image'),
+        hasLight: workflowJson.includes('light'),
+      }
+    } finally {
+      database.close()
+    }
+  })
+  expect(evidence.revision).toBeGreaterThanOrEqual(2)
+  expect(evidence.snapshotCount).toBeGreaterThanOrEqual(2)
+  expect(evidence.hasLoadImage).toBe(true)
+  expect(evidence.hasLight).toBe(true)
+  await testInfo.attach('m3-queued-save-evidence', {
+    body: JSON.stringify(evidence, null, 2),
+    contentType: 'application/json',
+  })
+})
+
 test('meaningful work requests durability once and explicit save reports quota', async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
     const target = window as typeof window & { persistCalls: number }
-    target.persistCalls = 0
+    target.persistCalls = Number(
+      localStorage.getItem('textureflow-test-persist-calls') ?? '0',
+    )
     Object.defineProperty(navigator.storage, 'persist', {
       configurable: true,
       value: async () => {
         target.persistCalls += 1
+        localStorage.setItem(
+          'textureflow-test-persist-calls',
+          String(target.persistCalls),
+        )
         return true
       },
     })
@@ -617,6 +726,14 @@ test('meaningful work requests durability once and explicit save reports quota',
 
   await page.getByRole('button', { name: 'Save project' }).click()
   await expect(page.getByText('Saved locally')).toBeVisible()
+  expect(
+    await page.evaluate(
+      () => (window as typeof window & { persistCalls: number }).persistCalls,
+    ),
+  ).toBe(1)
+
+  await page.reload()
+  await expect(page.getByLabel('Light node')).toBeVisible()
   expect(
     await page.evaluate(
       () => (window as typeof window & { persistCalls: number }).persistCalls,

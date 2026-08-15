@@ -117,17 +117,14 @@ function NodeInternalsSync({ nodeIdKey }: { nodeIdKey: string }) {
       }
     }
     let secondFrame = 0
-    let settledRefresh = 0
     const firstFrame = requestAnimationFrame(() => {
       secondFrame = requestAnimationFrame(() => {
         refresh()
-        settledRefresh = window.setTimeout(refresh, 100)
       })
     })
     return () => {
       cancelAnimationFrame(firstFrame)
       cancelAnimationFrame(secondFrame)
-      window.clearTimeout(settledRefresh)
     }
   }, [nodeIdKey, updateNodeInternals])
 
@@ -166,6 +163,7 @@ function App() {
   )
   const [nodeMenuOpen, setNodeMenuOpen] = useState(false)
   const graphDocument = useGraphStore((state) => state.document)
+  const graphViewport = useGraphStore((state) => state.viewport)
   const selectedNodeIds = useGraphStore((state) => state.selectedNodeIds)
   const undoStack = useGraphStore((state) => state.undoStack)
   const redoStack = useGraphStore((state) => state.redoStack)
@@ -189,10 +187,12 @@ function App() {
   const connectNodes = useGraphStore((state) => state.connectNodes)
   const replaceDocument = useGraphStore((state) => state.replaceDocument)
   const hydrateDocument = useGraphStore((state) => state.hydrateDocument)
+  const setViewport = useGraphStore((state) => state.setViewport)
   const undo = useGraphStore((state) => state.undo)
   const redo = useGraphStore((state) => state.redo)
   const projectPersistence = useProjectPersistence(
     graphDocument,
+    graphViewport,
     hydrateDocument,
     activeProject.id,
     activeProject.name,
@@ -513,9 +513,9 @@ function App() {
 
   function downloadWorkflow() {
     const json = serializeGraphWorkflow(graphDocument, {
-      id: 'untitled-workflow',
-      name: 'Untitled workflow',
-      viewport: { x: 0, y: 0, zoom: 1 },
+      id: activeProject.id,
+      name: activeProject.name,
+      viewport: graphViewport,
     })
     const url = URL.createObjectURL(
       new Blob([json], { type: 'application/vnd.textureflow.workflow+json' }),
@@ -535,7 +535,7 @@ function App() {
       setWorkflowNotice(`Import rejected: ${result.error}`)
       return
     }
-    replaceDocument(result.document)
+    replaceDocument(result.document, result.workflow.project.viewport)
     setWorkflowNotice(
       `Imported ${result.document.nodes.length} nodes and ${result.document.edges.length} edges`,
     )
@@ -805,10 +805,11 @@ function App() {
           ) : (
             <ReactFlow
               colorMode={theme}
+              defaultViewport={graphViewport}
               edges={flowEdges}
-              fitView
+              fitView={flowNodes.length === 0}
               fitViewOptions={{ maxZoom: 1 }}
-              key={flowNodes[0]?.id ?? 'empty-graph'}
+              key={`${activeProject.id}:${flowNodes[0]?.id ?? 'empty-graph'}`}
               maxZoom={2.5}
               minZoom={0.2}
               nodeTypes={NODE_TYPES}
@@ -836,6 +837,7 @@ function App() {
                   moveNode(node.id, node.position)
                 }
               }}
+              onMoveEnd={(_, viewport) => setViewport(viewport)}
               onPaneClick={clearSelection}
             >
               <NodeInternalsSync
@@ -1111,7 +1113,7 @@ function App() {
           </button>
           <span className="status-item zoom-readout">
             <Maximize2 aria-hidden="true" size={13} />
-            100%
+            {Math.round(graphViewport.zoom * 100)}%
           </span>
         </div>
       </footer>

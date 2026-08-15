@@ -9,6 +9,7 @@ import {
 
 export interface GraphStoreState {
   document: GraphDocument
+  viewport: { x: number; y: number; zoom: number }
   selectedNodeIds: readonly string[]
   undoStack: readonly GraphDocument[]
   redoStack: readonly GraphDocument[]
@@ -29,8 +30,15 @@ export interface GraphStoreState {
     edge: Omit<GraphEdge, 'id' | 'order'>,
     id?: string,
   ): ConnectionDiagnostic | null
-  replaceDocument(document: GraphDocument): void
-  hydrateDocument(document: GraphDocument): void
+  replaceDocument(
+    document: GraphDocument,
+    viewport?: { x: number; y: number; zoom: number },
+  ): void
+  hydrateDocument(
+    document: GraphDocument,
+    viewport?: { x: number; y: number; zoom: number },
+  ): void
+  setViewport(viewport: { x: number; y: number; zoom: number }): void
   deleteSelected(): void
   undo(): void
   redo(): void
@@ -50,6 +58,7 @@ function nextNodeId(): string {
 export function createGraphStore() {
   return createStore<GraphStoreState>((set, get) => ({
     document: EMPTY_DOCUMENT,
+    viewport: { x: 0, y: 0, zoom: 1 },
     selectedNodeIds: [],
     undoStack: [],
     redoStack: [],
@@ -291,24 +300,35 @@ export function createGraphStore() {
       })
       return null
     },
-    replaceDocument(document) {
+    replaceDocument(document, viewport) {
       const state = get()
       set({
         document,
+        viewport: viewport ?? state.viewport,
         selectedNodeIds: [],
         connectionDiagnostic: null,
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
       })
     },
-    hydrateDocument(document) {
+    hydrateDocument(document, viewport) {
       set({
         document,
+        viewport: viewport ?? { x: 0, y: 0, zoom: 1 },
         selectedNodeIds: [],
         connectionDiagnostic: null,
         undoStack: [],
         redoStack: [],
       })
+    },
+    setViewport(viewport) {
+      if (
+        !Object.values(viewport).every(Number.isFinite) ||
+        viewport.zoom <= 0
+      ) {
+        return
+      }
+      set({ viewport })
     },
     deleteSelected() {
       const state = get()

@@ -204,9 +204,21 @@ describe('graph command store', () => {
       nodes: [createGraphNode('light', 'saved', { x: 12, y: 18 }, 0)],
       edges: [],
     }
-    store.getState().hydrateDocument(saved)
+    store.getState().hydrateDocument(saved, { x: 25, y: 50, zoom: 1.5 })
     expect(store.getState().document).toBe(saved)
     expect(store.getState().undoStack).toEqual([])
     expect(store.getState().redoStack).toEqual([])
+    expect(store.getState().viewport).toEqual({ x: 25, y: 50, zoom: 1.5 })
+  })
+
+  it('persists viewport outside authored undo history', () => {
+    const store = createGraphStore()
+    store.getState().setViewport({ x: -100, y: 40, zoom: 1.25 })
+    expect(store.getState().viewport).toEqual({
+      x: -100,
+      y: 40,
+      zoom: 1.25,
+    })
+    expect(store.getState().undoStack).toEqual([])
   })
 })
