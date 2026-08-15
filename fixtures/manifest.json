@@ -8,6 +8,13 @@
       "sha256": "019f5b229ab85b8147cd84dce50baa389bcf1a73ba64c781acbb9aa7688762be",
       "provenance": "Repository-authored M0 deterministic vector",
       "purpose": "Proves the system-light-dark theme preference cycle"
+    },
+    {
+      "id": "scalar-reference-v1",
+      "path": "vectors/scalar-reference-v1.json",
+      "sha256": "12269da9e2d4fe7847495e05cce5c99e8ea4e34ed56d2c418753f8007fbb9214",
+      "provenance": "Repository-authored M1 vectors derived from the normative processing equations",
+      "purpose": "Provides independent numeric oracles for color, alpha, compositing, resize, normals, lights, and representative color"
     }
   ]
 }

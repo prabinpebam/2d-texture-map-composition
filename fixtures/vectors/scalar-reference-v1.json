@@ -1,0 +1,43 @@
+{
+  "algorithmVersion": "scalar-reference.v1",
+  "colorTransfer": [
+    { "encoded": 0, "linear": 0 },
+    { "encoded": 0.04045, "linear": 0.0031308049535603713 },
+    { "encoded": 0.5, "linear": 0.21404114048223255 },
+    { "encoded": 1, "linear": 1 }
+  ],
+  "alpha": {
+    "premultiplied": { "red": 0.25, "green": 0.1, "blue": 0.4, "alpha": 0.5 },
+    "straight": { "red": 0.5, "green": 0.2, "blue": 0.8, "alpha": 0.5 },
+    "transparentColored": { "red": 1, "green": 0.5, "blue": 0.25, "alpha": 0 },
+    "transparentBlack": { "red": 0, "green": 0, "blue": 0, "alpha": 0 }
+  },
+  "composite": {
+    "backdrop": { "red": 0, "green": 0, "blue": 1, "alpha": 1 },
+    "source": { "red": 1, "green": 0, "blue": 0, "alpha": 0.5 },
+    "normal": { "red": 0.5, "green": 0, "blue": 0.5, "alpha": 1 },
+    "multiply": { "red": 0, "green": 0, "blue": 0.5, "alpha": 1 }
+  },
+  "resize": [
+    { "destination": 0, "sourceExtent": 4, "destinationExtent": 2, "sourceCoordinate": 0.5, "nearestIndex": 0 },
+    { "destination": 1, "sourceExtent": 4, "destinationExtent": 2, "sourceCoordinate": 2.5, "nearestIndex": 2 },
+    { "destination": 0, "sourceExtent": 1, "destinationExtent": 3, "sourceCoordinate": -0.33333333333333337, "nearestIndex": 0 }
+  ],
+  "normal": {
+    "encoded": [0.75, 0.5, 1],
+    "decoded": { "x": 0.4472135954999579, "y": 0, "z": 0.8944271909999159 }
+  },
+  "light": {
+    "azimuthDegrees": 315,
+    "elevationDegrees": 45,
+    "vector": { "x": 0.5, "y": -0.5, "z": 0.7071067811865475 }
+  },
+  "representative": {
+    "pixels": [
+      { "red": 1, "green": 0, "blue": 0, "alpha": 1 },
+      { "red": 0, "green": 0, "blue": 1, "alpha": 0 }
+    ],
+    "color": { "red": 1, "green": 0, "blue": 0 },
+    "encodedHex": "#FF0000"
+  }
+}
