@@ -2,18 +2,16 @@
 
 ## Status
 
-The detailing phase and implementation milestones M0-M4 have validated backend
-and workflow evidence. A user-directed node-first workbench amendment dated
-2026-08-15 reopens the affected M2/M4 presentation and execution UX through R1;
-their domain, persistence, and processing evidence remains retained. The
-repository now contains a validated workspace foundation, scalar processing
-oracle, Rust/WASM worker prototype, bounded tile and PNG-envelope adapters,
-transactional worker-owned local persistence, typed accessible graph authoring,
-graph workflow v1, bounded image import and mask preview, architecture decisions,
-and mandatory Playwright UX evaluation against the actual app in Microsoft Edge.
-M5 numerical/worker work is paused pending R1 node-local controls, previews, and
-explicit workflow execution. Product feature milestones M5-M10 remain to be
-implemented. Failed M1 capability spikes remain intentionally hidden or
+Implementation milestones M0-M4 are closed with retained backend/workflow
+evidence. The 2026-08-15 node-first and ComfyUI interaction amendments are now
+implemented through explicit run/queue execution, shared node widgets, typed
+parameter sockets, externally driven values, node insertion, source/output
+previews, Load Image ingestion, native React Flow drag/resize, responsive rounded
+node surfaces, and automated 25/300-node plus layout-matrix evaluation. The full
+local baseline passes 92 tests, 11 WASM vectors, production build, and 35 actual
+Microsoft Edge journeys. Residual R1 behaviors and formal closure remain open;
+M5 numerical/worker work is retained but not formally closed, and M6-M10 remain
+to be implemented. Failed M1 capability spikes remain intentionally hidden or
 bounded rather than treated as completed product work.
 
 The human-authored `seed-spec.md` is immutable and remains the source of product
@@ -35,6 +33,7 @@ intent. Derived documents resolve ambiguities without changing that reference.
 | 9 | `09-traceability-decisions-risks.md` | Seed coverage, decisions, risks, open questions, audit | Current |
 | 10 | `10-node-first-workbench-update.md` | User-directed ComfyUI-informed node-local controls, previews, run/queue amendment | Active; R1 required before M5 resumes |
 | 11 | `11-comfyui-node-interaction-update.md` | Authoritative ComfyUI node chrome, connection gestures, and externally driven widget amendment | Active; R1.7-R1.10 required |
+| 12 | `12-continuation-handoff.md` | Verified cross-device continuation context, architecture, evidence, constraints, and exact next work | Current handoff entry point |
 
 The repository-root `agent-graph-loop.md` governs execution: outcomes and
 definitions of done control nested loops; failed evaluations reopen the smallest
