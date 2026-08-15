@@ -1,8 +1,21 @@
 import { NODE_CATALOG, type NodeCatalogItem } from './workspace'
-import { getDefaultNodeParameters } from './nodeWidgetSchema'
+import {
+  getDefaultNodeParameters,
+  getNodeWidgetInputSchema,
+  parameterPortId,
+} from './nodeWidgetSchema'
 
 export type PortDataType =
-  'image' | 'mask' | 'height' | 'normal' | 'color' | 'light'
+  | 'image'
+  | 'mask'
+  | 'height'
+  | 'normal'
+  | 'color'
+  | 'light'
+  | 'integer'
+  | 'float'
+  | 'string'
+  | 'boolean'
 
 export interface InputPortDefinition {
   id: string
@@ -65,6 +78,26 @@ const definitions: Record<
   string,
   Omit<NodeTypeDefinition, keyof NodeCatalogItem>
 > = {
+  'integer-value': {
+    inputs: [],
+    outputs: [{ id: 'integer', label: 'Integer', dataType: 'integer' }],
+  },
+  'number-value': {
+    inputs: [],
+    outputs: [{ id: 'float', label: 'Number', dataType: 'float' }],
+  },
+  'text-value': {
+    inputs: [],
+    outputs: [{ id: 'string', label: 'Text', dataType: 'string' }],
+  },
+  'boolean-value': {
+    inputs: [],
+    outputs: [{ id: 'boolean', label: 'Boolean', dataType: 'boolean' }],
+  },
+  'color-value': {
+    inputs: [],
+    outputs: [{ id: 'color', label: 'Color', dataType: 'color' }],
+  },
   'load-image': {
     inputs: [],
     outputs: [{ id: 'image', label: 'Image', dataType: 'image' }],
@@ -178,7 +211,25 @@ const definitions: Record<
 }
 
 export const NODE_TYPE_REGISTRY = Object.fromEntries(
-  NODE_CATALOG.map((item) => [item.id, { ...item, ...definitions[item.id] }]),
+  NODE_CATALOG.map((item) => {
+    const definition = definitions[item.id]
+    const parameterInputs: InputPortDefinition[] = getNodeWidgetInputSchema(
+      item.id,
+    ).map((field) => ({
+      id: parameterPortId(field.key),
+      label: field.label,
+      accepts: [field.inputType],
+      cardinality: 'optional',
+    }))
+    return [
+      item.id,
+      {
+        ...item,
+        ...definition,
+        inputs: [...definition.inputs, ...parameterInputs],
+      },
+    ]
+  }),
 ) as Readonly<Record<string, NodeTypeDefinition>>
 
 export function getDefaultNodeSize(type: string): GraphNode['size'] {
@@ -194,8 +245,10 @@ export function getDefaultNodeSize(type: string): GraphNode['size'] {
             : type === 'resize'
               ? 430
               : type === 'load-image'
-                ? 300
-                : 128,
+                ? 420
+                : type.endsWith('-value')
+                  ? 190
+                  : 128,
   }
 }
 

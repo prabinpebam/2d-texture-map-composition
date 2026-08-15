@@ -204,6 +204,11 @@ alpha defects. Diff images are evidence, not the sole detector.
 | E2E-015 | Run selected output branch | selected output identity, exact upstream event set, unrelated branch inactivity |
 | E2E-016 | Interrupt and stale run race | cancel feedback, released work, prior result retention, stale completion rejection |
 | E2E-017 | Node/inspector field parity | same field edited in both hosts, one authored key, undo and serialization parity |
+| E2E-018 | Node insertion paths | library drag/drop coordinates; `/` mouse and Arrow/Enter selection at viewport center; double-click insertion at clicked graph coordinate; Escape no-op |
+| E2E-019 | ComfyUI node interaction parity | title-only drag, four-corner resize, typed socket/edge paint, input detach/reconnect, empty-link compatible search |
+| E2E-020 | Widget input override and fallback | every widget exposes typed socket; external drive changes effective value/output; manual fallback survives disable, undo, save/reload, and disconnect |
+| E2E-021 | Live drag and socket geometry | sampled intermediate node/edge positions during title drag; one revision/undo commit; socket circles and hit targets extend outside node bounds without clipping |
+| E2E-022 | ComfyUI Load Image ingestion | Browse, direct node drop, and clipboard image paste/replace; actual in-node pixel/metadata thumbnail; persisted reload and invalid-input recovery |
 
 Playwright must use real event input. DOM presence/classes alone do not prove
 visibility or usability. Overlays, menus, dialogs, ports, and previews require
@@ -215,6 +220,11 @@ inspector is allowed only in the explicit parity/detail journey. Evidence must
 sample the bitmap inside the output node, prove controls are hit-testable without
 moving the node, and record node rectangles before/after loading/running/error to
 prove stable geometry.
+
+Node-insertion evidence captures viewport transform and graph/node rectangles.
+The detector converts the requested screen point to graph space and verifies the
+created node center within 2 CSS pixels after pan/zoom. It also proves a library
+drop outside the graph and chooser Escape create no node or undo entry.
 
 ## 9. Accessibility Evaluation
 

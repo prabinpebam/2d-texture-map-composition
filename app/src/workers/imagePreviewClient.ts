@@ -18,6 +18,7 @@ export interface ImagePreviewResult {
 }
 
 interface PendingPreview {
+  nodeId: string
   resolve(result: ImagePreviewResult): void
   reject(error: Error): void
 }
@@ -93,7 +94,7 @@ export class ImagePreviewClient {
       operations: settings.operations,
     }
     return new Promise((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject })
+      this.pending.set(requestId, { nodeId, resolve, reject })
       let workerIndex = this.nodeWorkers.get(nodeId)
       if (workerIndex === undefined) {
         workerIndex = this.nextWorker
@@ -103,6 +104,25 @@ export class ImagePreviewClient {
       this.workers[workerIndex].postMessage(request)
     })
   }
+
+  cancel(nodeId: string) {
+    const generation = (this.generations.get(nodeId) ?? 0) + 1
+    this.generations.set(nodeId, generation)
+    for (const [requestId, pending] of this.pending) {
+      if (pending.nodeId !== nodeId) continue
+      this.pending.delete(requestId)
+      pending.reject(new Error('Preview canceled'))
+    }
+    const workerIndex = this.nodeWorkers.get(nodeId)
+    if (workerIndex === undefined) return
+    this.workers[workerIndex].postMessage({
+      protocolVersion: IMAGE_PREVIEW_PROTOCOL_VERSION,
+      type: 'cancel-preview',
+      requestId: crypto.randomUUID(),
+      nodeId,
+      generation,
+    } satisfies ImagePreviewRequest)
+  }
 }
 
 let imagePreviewClient: ImagePreviewClient | null = null
@@ -110,4 +130,8 @@ let imagePreviewClient: ImagePreviewClient | null = null
 export function getImagePreviewClient(): ImagePreviewClient {
   imagePreviewClient ??= new ImagePreviewClient()
   return imagePreviewClient
+}
+
+export function cancelImagePreview(nodeId: string) {
+  imagePreviewClient?.cancel(nodeId)
 }

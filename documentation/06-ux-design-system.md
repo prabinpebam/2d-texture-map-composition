@@ -62,6 +62,11 @@ not the place where node parameters are authored.
 - Wheel/trackpad scroll pans; `Ctrl+wheel` zooms around pointer. Browser zoom
   remains available from browser UI and keyboard where the browser reserves it.
 - Drag from output port to compatible input creates an edge on pointer-up.
+- Dragging a node template from the library onto the graph creates it centered at
+  the drop coordinate. The library item remains available and failed/outside
+  drops create no authored command.
+- Double-clicking empty canvas opens the node search chooser; selection inserts at
+  the double-click coordinate in graph space.
 - Dragging to empty canvas opens a compatible-node chooser; cancel creates no
   mutation.
 - Selection rectangle starts only from empty canvas and has additive modifier.
@@ -80,6 +85,7 @@ graph does not add hundreds of tab stops.
 | `Delete` | Delete selected unlocked items with undo |
 | `Shift+C` | Open Connect dialog for focused/selected node |
 | `Shift+A` | Open Add Node command at focused location |
+| `/` | Open searchable Add Node chooser at current viewport center |
 | `Shift+R` | Open numeric Resize Node dialog |
 | `Home` / `End` | Focus first/last node in topological then ID order |
 | `Escape` | Cancel gesture/dialog, then clear selection |
@@ -92,6 +98,21 @@ graph does not add hundreds of tab stops.
 The Connect dialog selects output port, compatible target node, and input port
 using ordinary list/combobox controls. It is the non-drag equivalent required by
 WCAG. Numeric Position/Size commands provide non-drag movement and resizing.
+
+### Node search and placement
+
+The Add Node chooser is one shared modal surface for `/`, `Shift+A`, and canvas
+double-click. It opens centered in the visible graph viewport with a focused
+search field and an unframed result list. Search matches node label, category,
+and summary. Arrow Up/Down changes the active option, Enter inserts it, pointer
+click inserts it, and Escape closes without mutation. Active-option state is
+exposed through combobox/listbox semantics and selection never requires Tab.
+
+`/` and `Shift+A` place the chosen node at the center of the currently visible
+graph framing. Double-click preserves the clicked graph coordinate. Library drag
+and drop preserves the pointer's graph coordinate. All paths account for current
+pan/zoom, center the node on the requested point, select the new node, create one
+undoable authored command, and return focus to the graph.
 
 ### Required shortcuts
 
@@ -133,6 +154,12 @@ the same shared controls and validation as the inspector. Inputs, sliders, selec
 preview pan/zoom, and buttons carry the no-drag/no-pan contract. Pointer events on
 widgets never begin node move, canvas pan, or edge creation.
 
+The visual and interaction baseline for node chrome is ComfyUI as amended in
+`11-comfyui-node-interaction-update.md`: colored title drag bar, compact dark node
+body, circular typed sockets on the outer left/right edges, curved type-colored
+links, corner resizing, title rename, and floating selected-node tools. Product
+application chrome remains TextureFlow-branded.
+
 ### Stable dimensions
 
 - Default simple-node width: 240 px; interactive/preview nodes may default to
@@ -140,6 +167,9 @@ widgets never begin node move, canvas pan, or edge creation.
 - Header: 32 px minimum; port row: 28 px minimum.
 - Resize handles have at least a 24 px hit target, even if the visible glyph is
   smaller. Resizing cannot hide required controls or truncate a port label.
+- Node outer chrome must allow sockets and resize affordances to paint beyond the
+  body border. Internal content clips within dedicated inner surfaces; the node
+  root never clips socket circles or their hit targets.
 - At distant zoom, internal controls collapse to title/type/state while ports and
   selection remain legible. Layout does not reflow during hover or progress.
 - Node-local previews use an authored or type-default aspect ratio and explicit
@@ -179,6 +209,12 @@ in forced colors and monochrome screenshots.
 - Compatible targets highlight by shape plus contrast, not color alone.
 - Edges inherit source type styling but selected/focused/error overlays are
   independent. Animated edges are not used for ordinary compute status.
+- Every editable widget row has a schema-generated left input socket aligned to
+  that row. When connected, the control is visibly read-only and labeled driven;
+  the manual fallback remains visible. Dragging the connected socket detaches and
+  begins reconnect; releasing a link on empty canvas opens compatible-node search.
+- Title dragging updates visible node geometry on every pointer move. Selection,
+  edges, sockets, and minimap follow in real time; only release enters history.
 
 ### Node selection toolbox and context menu
 
@@ -200,8 +236,9 @@ uses a different default, or produces different undo/preview behavior.
 
 ### Node-local ordinary controls
 
-- **Load Image:** source/replace, output Color/Mask, mask source, invert, compact
-  source metadata, and thumbnail.
+- **Load Image:** Browse/Replace, file drop target, clipboard image paste, output
+  Color/Mask, mask source, invert, filename/dimensions, and actual source thumbnail.
+  The preview occupies stable bounds and is not a decorative placeholder.
 - **Resize:** width/height, px/percent, aspect lock, preset, resolved method, reset.
 - **Color Correction:** compact hue, saturation, temperature, green-magenta, tint,
   tint mix, direct numeric values, reset.

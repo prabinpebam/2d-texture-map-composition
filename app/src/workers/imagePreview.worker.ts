@@ -18,8 +18,8 @@ import { sniffImageFile } from '../processing/imageSniffer'
 import {
   IMAGE_PREVIEW_PROTOCOL_VERSION,
   isImagePreviewRequest,
-  type ImagePreviewRequest,
   type ImagePreviewResponse,
+  type RenderImagePreviewRequest,
 } from './imagePreviewProtocol'
 
 const workerScope: DedicatedWorkerGlobalScope =
@@ -123,7 +123,7 @@ function maskValue(
   green: number,
   blue: number,
   alpha: number,
-  request: ImagePreviewRequest,
+  request: RenderImagePreviewRequest,
 ) {
   let value: number
   if (request.maskSource === 'alpha') value = alpha
@@ -140,7 +140,7 @@ function maskValue(
   return request.invert ? 1 - value : value
 }
 
-async function render(request: ImagePreviewRequest) {
+async function render(request: RenderImagePreviewRequest) {
   const cached = getCachedPreview(request.cacheKey)
   if (cached) {
     return {
@@ -305,6 +305,7 @@ workerScope.addEventListener('message', (event: MessageEvent<unknown>) => {
   if (!isImagePreviewRequest(event.data)) return
   const request = event.data
   latestGeneration.set(request.nodeId, request.generation)
+  if (request.type === 'cancel-preview') return
   void render(request)
     .then((result) => {
       if (!result) {

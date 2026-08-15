@@ -9,6 +9,7 @@ import {
 
 export interface GraphStoreState {
   document: GraphDocument
+  revision: number
   viewport: { x: number; y: number; zoom: number }
   selectedNodeIds: readonly string[]
   undoStack: readonly GraphDocument[]
@@ -28,6 +29,7 @@ export interface GraphStoreState {
     geometry: { x: number; y: number; width: number; height: number },
   ): boolean
   updateNodeParameters(id: string, parameters: Record<string, unknown>): boolean
+  renameNode(id: string, label: string): boolean
   moveSelectedBy(delta: { x: number; y: number }): void
   duplicateSelected(createId?: () => string): readonly string[]
   bringSelectedToFront(): void
@@ -35,6 +37,11 @@ export interface GraphStoreState {
   connectNodes(
     edge: Omit<GraphEdge, 'id' | 'order'>,
     id?: string,
+  ): ConnectionDiagnostic | null
+  disconnectEdge(id: string): boolean
+  reconnectEdge(
+    id: string,
+    edge: Omit<GraphEdge, 'id' | 'order'>,
   ): ConnectionDiagnostic | null
   replaceDocument(
     document: GraphDocument,
@@ -64,6 +71,7 @@ function nextNodeId(): string {
 export function createGraphStore() {
   return createStore<GraphStoreState>((set, get) => ({
     document: EMPTY_DOCUMENT,
+    revision: 0,
     viewport: { x: 0, y: 0, zoom: 1 },
     selectedNodeIds: [],
     undoStack: [],
@@ -88,6 +96,7 @@ export function createGraphStore() {
           ...state.document,
           nodes: [...state.document.nodes, node],
         },
+        revision: state.revision + 1,
         selectedNodeIds: [id],
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
@@ -127,6 +136,7 @@ export function createGraphStore() {
             candidate.id === id ? { ...candidate, position } : candidate,
           ),
         },
+        revision: state.revision + 1,
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
       })
@@ -139,7 +149,7 @@ export function createGraphStore() {
         node.locked ||
         !Object.values(geometry).every(Number.isFinite) ||
         geometry.width < 180 ||
-        geometry.width > 560 ||
+        geometry.width > 640 ||
         geometry.height < 96 ||
         geometry.height > 1200
       ) {
@@ -158,6 +168,7 @@ export function createGraphStore() {
               : candidate,
           ),
         },
+        revision: state.revision + 1,
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
       })
@@ -182,6 +193,34 @@ export function createGraphStore() {
               : candidate,
           ),
         },
+        revision: state.revision + 1,
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+      return true
+    },
+    renameNode(id, label) {
+      const state = get()
+      const node = state.document.nodes.find((candidate) => candidate.id === id)
+      const trimmedLabel = label.trim()
+      if (
+        !node ||
+        node.locked ||
+        !trimmedLabel ||
+        node.label === trimmedLabel
+      ) {
+        return false
+      }
+      set({
+        document: {
+          ...state.document,
+          nodes: state.document.nodes.map((candidate) =>
+            candidate.id === id
+              ? { ...candidate, label: trimmedLabel }
+              : candidate,
+          ),
+        },
+        revision: state.revision + 1,
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
       })
@@ -209,6 +248,7 @@ export function createGraphStore() {
               : node,
           ),
         },
+        revision: state.revision + 1,
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
       })
@@ -252,6 +292,7 @@ export function createGraphStore() {
           nodes: [...state.document.nodes, ...copies],
           edges: [...state.document.edges, ...copiedEdges],
         },
+        revision: state.revision + 1,
         selectedNodeIds: copyIds,
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
@@ -284,6 +325,7 @@ export function createGraphStore() {
               : node,
           ),
         },
+        revision: state.revision + 1,
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
       })
@@ -309,6 +351,7 @@ export function createGraphStore() {
               : node,
           ),
         },
+        revision: state.revision + 1,
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
       })
@@ -327,6 +370,67 @@ export function createGraphStore() {
       }
       set({
         document: result.graph,
+        revision: state.revision + 1,
+        connectionDiagnostic: null,
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+      return null
+    },
+    disconnectEdge(id) {
+      const state = get()
+      const edge = state.document.edges.find((candidate) => candidate.id === id)
+      if (!edge) return false
+      const source = state.document.nodes.find(
+        (node) => node.id === edge.sourceNodeId,
+      )
+      const target = state.document.nodes.find(
+        (node) => node.id === edge.targetNodeId,
+      )
+      if (source?.locked || target?.locked) return false
+      set({
+        document: {
+          ...state.document,
+          edges: state.document.edges.filter(
+            (candidate) => candidate.id !== id,
+          ),
+        },
+        revision: state.revision + 1,
+        connectionDiagnostic: null,
+        undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+      return true
+    },
+    reconnectEdge(id, edge) {
+      const state = get()
+      const existing = state.document.edges.find(
+        (candidate) => candidate.id === id,
+      )
+      if (!existing) return 'missing-port'
+      const source = state.document.nodes.find(
+        (node) => node.id === existing.sourceNodeId,
+      )
+      const target = state.document.nodes.find(
+        (node) => node.id === existing.targetNodeId,
+      )
+      if (source?.locked || target?.locked) return 'missing-node'
+      const withoutExisting: GraphDocument = {
+        ...state.document,
+        edges: state.document.edges.filter((candidate) => candidate.id !== id),
+      }
+      const result = connectGraph(withoutExisting, {
+        ...edge,
+        id,
+        order: existing.order,
+      })
+      if (!result.ok) {
+        set({ connectionDiagnostic: result.diagnostic })
+        return result.diagnostic
+      }
+      set({
+        document: result.graph,
+        revision: state.revision + 1,
         connectionDiagnostic: null,
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
@@ -337,6 +441,7 @@ export function createGraphStore() {
       const state = get()
       set({
         document,
+        revision: state.revision + 1,
         viewport: viewport ?? state.viewport,
         selectedNodeIds: [],
         connectionDiagnostic: null,
@@ -347,6 +452,7 @@ export function createGraphStore() {
     hydrateDocument(document, viewport) {
       set({
         document,
+        revision: 0,
         viewport: viewport ?? { x: 0, y: 0, zoom: 1 },
         selectedNodeIds: [],
         connectionDiagnostic: null,
@@ -382,6 +488,7 @@ export function createGraphStore() {
       }
       set({
         document: nextDocument,
+        revision: state.revision + 1,
         selectedNodeIds: state.selectedNodeIds.filter((id) => !deleted.has(id)),
         undoStack: [...state.undoStack, state.document],
         redoStack: [],
@@ -394,6 +501,7 @@ export function createGraphStore() {
       if (!previous) return
       set({
         document: previous,
+        revision: state.revision + 1,
         selectedNodeIds: [],
         undoStack: state.undoStack.slice(0, -1),
         redoStack: [state.document, ...state.redoStack],
@@ -406,6 +514,7 @@ export function createGraphStore() {
       if (!next) return
       set({
         document: next,
+        revision: state.revision + 1,
         selectedNodeIds: [],
         undoStack: [...state.undoStack, state.document],
         redoStack: state.redoStack.slice(1),

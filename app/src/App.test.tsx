@@ -27,6 +27,7 @@ vi.mock('./app/projectPersistence', () => ({
 beforeEach(() => {
   graphStore.setState({
     document: { nodes: [], edges: [] },
+    revision: 0,
     viewport: { x: 0, y: 0, zoom: 1 },
     selectedNodeIds: [],
     undoStack: [],

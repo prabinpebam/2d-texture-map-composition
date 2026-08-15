@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { connectGraph, createGraphNode, type GraphDocument } from './graph'
+import {
+  connectGraph,
+  createGraphNode,
+  NODE_TYPE_REGISTRY,
+  type GraphDocument,
+} from './graph'
 
 function graphWith(...types: string[]): GraphDocument {
   return {
@@ -19,12 +24,34 @@ describe('typed graph domain', () => {
       type: 'load-image',
       label: 'Load image',
       position: { x: 12, y: 24 },
-      size: { width: 280, height: 300 },
+      size: { width: 280, height: 420 },
       zIndex: 3,
       bypassed: false,
       muted: false,
       locked: false,
     })
+  })
+
+  it('composes widget parameter sockets into node definitions', () => {
+    expect(NODE_TYPE_REGISTRY.resize.inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'parameter:width',
+          accepts: ['integer'],
+          cardinality: 'optional',
+        }),
+        expect.objectContaining({
+          id: 'parameter:aspectLocked',
+          accepts: ['boolean'],
+        }),
+      ]),
+    )
+    expect(NODE_TYPE_REGISTRY['color-correction'].inputs).toContainEqual(
+      expect.objectContaining({
+        id: 'parameter:tintHex',
+        accepts: ['color'],
+      }),
+    )
   })
 
   it('connects compatible ports and rejects incompatible types', () => {

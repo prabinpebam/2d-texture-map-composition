@@ -249,6 +249,21 @@ closure is blocked until R1 passes.
   field parity, focus restoration, undo coalescing, and serialization parity.
 - R1.5 Re-run accessibility and performance with DOM widgets and bitmaps inside
   nodes at realistic 25-node and stress 100/300-node tiers.
+- R1.6 Unify node insertion: draggable library templates, `/` and `Shift+A`
+  searchable keyboard/pointer chooser at viewport center, and empty-canvas
+  double-click chooser at the clicked graph coordinate.
+- R1.7 Rebuild node chrome, title dragging, four-corner resizing, typed sockets,
+  links, selected toolbox, rename, and collapse to the ComfyUI interaction model.
+- R1.8 Generate typed optional `parameter:<key>` inputs for every editable widget
+  and show shared node/inspector externally-driven state without losing fallback.
+- R1.9 Add effective-parameter resolution and primitive number/string/boolean/
+  color value nodes so every P0 widget type can be driven through execution.
+- R1.10 Add connected-input detach/reconnect, empty-link compatible-node search,
+  compatible target highlighting, serialization, undo, and Edge E2E evidence.
+- R1.11 Remove socket clipping and split transient live drag position from the
+  single authored move commit, including edge/minimap tracking and undo evidence.
+- R1.12 Add ComfyUI-style Load Image browse/replace, node drop, clipboard paste,
+  source thumbnail/metadata, shared validation/persistence, and recovery states.
 
 **Exit evidence**
 
@@ -258,12 +273,23 @@ closure is blocked until R1 passes.
   queue records, visible node states, and correct result ownership.
 - Interrupt and stale-run races cannot publish canceled/older output; cache reuse
   reports cached without kernel execution.
+- Drag/drop, slash search, keyboard selection, and double-click search create one
+  correctly centered node at their specified graph-space coordinates under
+  non-default pan/zoom; cancel/outside-drop paths create no mutation.
+- Node chrome and connection gestures meet the ComfyUI amendment; every editable
+  field has a typed socket, external values drive output without overwriting the
+  manual fallback, and disconnect restores that fallback through save/reload.
 - Node widget interactions are hit-testable and do not move/pan nodes. Loading,
   result, cached, and error states preserve node/port geometry.
 - Node and inspector hosts write the same authored keys/defaults/validation and
   one undo transaction; workflow round-trip is unchanged.
 - Actual Edge Playwright evidence retains screenshots, node rectangles, pixel
   samples, queue capture, focus log, and accessibility output.
+- Sockets remain fully painted and hit-testable outside the node border; nodes,
+  links, and minimap track title drags continuously while one move commits.
+- Browse, node drop, and clipboard paste all load/replace through the same asset
+  boundary, show actual in-node source pixels/metadata, persist, reload, and fail
+  without discarding the previous valid source.
 
 ### M5: Resize and correction nodes
 

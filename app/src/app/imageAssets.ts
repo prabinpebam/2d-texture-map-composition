@@ -1,5 +1,8 @@
 import { sniffImageFile, type SniffedImage } from '../processing/imageSniffer'
-import { getImagePreviewClient } from '../workers/imagePreviewClient'
+import {
+  cancelImagePreview,
+  getImagePreviewClient,
+} from '../workers/imagePreviewClient'
 import type { PreviewMaskSource } from '../workers/imagePreviewProtocol'
 import type { PreviewOperation } from '../workers/imagePreviewProtocol'
 import { getPersistenceClient } from '../workers/persistenceClient'
@@ -66,4 +69,8 @@ export async function renderImageAssetPreview(
       JSON.stringify(settings.operations ?? []),
     ].join(':'),
   })
+}
+
+export function cancelImageAssetPreview(nodeId: string) {
+  cancelImagePreview(nodeId)
 }

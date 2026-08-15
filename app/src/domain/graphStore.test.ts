@@ -94,11 +94,25 @@ describe('graph command store', () => {
       maskSource: 'alpha',
       invert: false,
     })
+    expect(store.getState().revision).toBe(2)
+    store.getState().selectNode('source')
+    store.getState().setViewport({ x: 10, y: 20, zoom: 1.2 })
+    expect(store.getState().revision).toBe(2)
     store.getState().undo()
     expect(store.getState().document.nodes[0].parameters).toMatchObject({
       assetDigest: null,
       mode: 'color',
     })
+    expect(store.getState().revision).toBe(3)
+  })
+
+  it('renames a node as one undoable authored command', () => {
+    const store = createGraphStore()
+    store.getState().addNode('resize', { x: 0, y: 0 }, 'resize')
+    expect(store.getState().renameNode('resize', 'Texture size')).toBe(true)
+    expect(store.getState().document.nodes[0].label).toBe('Texture size')
+    store.getState().undo()
+    expect(store.getState().document.nodes[0].label).toBe('Resize')
   })
 
   it('duplicates selected nodes and toggles supported authored states', () => {
@@ -147,6 +161,40 @@ describe('graph command store', () => {
       targetPortId: 'input',
       order: 0,
     })
+  })
+
+  it('disconnects and reconnects parameter edges without changing fallback values', () => {
+    const store = createGraphStore()
+    store.getState().addNode('integer-value', { x: 0, y: 0 }, 'first')
+    store.getState().addNode('integer-value', { x: 0, y: 0 }, 'second')
+    store.getState().addNode('resize', { x: 0, y: 0 }, 'resize')
+    store.getState().updateNodeParameters('resize', { width: 1024 })
+    expect(
+      store.getState().connectNodes(
+        {
+          sourceNodeId: 'first',
+          sourcePortId: 'integer',
+          targetNodeId: 'resize',
+          targetPortId: 'parameter:width',
+        },
+        'parameter-edge',
+      ),
+    ).toBeNull()
+    expect(
+      store.getState().reconnectEdge('parameter-edge', {
+        sourceNodeId: 'second',
+        sourcePortId: 'integer',
+        targetNodeId: 'resize',
+        targetPortId: 'parameter:width',
+      }),
+    ).toBeNull()
+    expect(store.getState().document.edges[0].sourceNodeId).toBe('second')
+    expect(store.getState().document.nodes[2].parameters?.width).toBe(1024)
+    expect(store.getState().disconnectEdge('parameter-edge')).toBe(true)
+    expect(store.getState().document.edges).toHaveLength(0)
+    expect(store.getState().document.nodes[2].parameters?.width).toBe(1024)
+    store.getState().undo()
+    expect(store.getState().document.edges).toHaveLength(1)
   })
 
   it('brings selected nodes to the front as one undoable command', () => {

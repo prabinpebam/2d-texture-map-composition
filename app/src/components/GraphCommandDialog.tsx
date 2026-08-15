@@ -8,7 +8,7 @@ import {
 import { X } from 'lucide-react'
 import { IconButton } from './IconButton'
 
-export type GraphCommandMode = 'add' | 'connect' | 'geometry'
+export type GraphCommandMode = 'connect' | 'geometry'
 
 export interface ConnectionOption {
   value: string
@@ -24,27 +24,22 @@ interface GeometryValue {
 
 interface GraphCommandDialogProps {
   mode: GraphCommandMode
-  addOptions: readonly { value: string; label: string }[]
   connectionOptions: readonly ConnectionOption[]
   geometry: GeometryValue | null
-  onAdd(type: string): void
   onClose(): void
   onConnect(value: string): boolean
   onGeometry(value: GeometryValue): boolean
 }
 
 const TITLES: Record<GraphCommandMode, string> = {
-  add: 'Add node',
   connect: 'Connect nodes',
   geometry: 'Position and size',
 }
 
 export function GraphCommandDialog({
   mode,
-  addOptions,
   connectionOptions,
   geometry,
-  onAdd,
   onClose,
   onConnect,
   onGeometry,
@@ -59,11 +54,6 @@ export function GraphCommandDialog({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const values = new FormData(event.currentTarget)
-    if (mode === 'add') {
-      onAdd(String(values.get('nodeType')))
-      onClose()
-      return
-    }
     if (mode === 'connect') {
       if (onConnect(String(values.get('connection')))) onClose()
       else setError('Connection could not be created.')
@@ -76,7 +66,7 @@ export function GraphCommandDialog({
       height: Number(values.get('height')),
     }
     if (onGeometry(nextGeometry)) onClose()
-    else setError('Width must be 180-560 and height must be 96-1200.')
+    else setError('Width must be 180-640 and height must be 96-1200.')
   }
 
   return (
@@ -97,22 +87,6 @@ export function GraphCommandDialog({
           </IconButton>
         </div>
         <form className="graph-command-form" onSubmit={submit}>
-          {mode === 'add' ? (
-            <label>
-              Node type
-              <select
-                defaultValue={addOptions[0]?.value}
-                name="nodeType"
-                ref={firstControlRef as RefObject<HTMLSelectElement>}
-              >
-                {addOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
           {mode === 'connect' ? (
             <label>
               Compatible target
@@ -173,11 +147,7 @@ export function GraphCommandDialog({
               disabled={mode === 'connect' && connectionOptions.length === 0}
               type="submit"
             >
-              {mode === 'add'
-                ? 'Add node'
-                : mode === 'connect'
-                  ? 'Connect'
-                  : 'Apply'}
+              {mode === 'connect' ? 'Connect' : 'Apply'}
             </button>
           </div>
         </form>

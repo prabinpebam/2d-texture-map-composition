@@ -9,6 +9,36 @@ export interface NodeCatalogItem {
 
 export const NODE_CATALOG: readonly NodeCatalogItem[] = [
   {
+    id: 'integer-value',
+    label: 'Integer',
+    category: 'input',
+    summary: 'Whole-number value for parameter inputs',
+  },
+  {
+    id: 'number-value',
+    label: 'Number',
+    category: 'input',
+    summary: 'Floating-point value for parameter inputs',
+  },
+  {
+    id: 'text-value',
+    label: 'Text',
+    category: 'input',
+    summary: 'Text or enum value for parameter inputs',
+  },
+  {
+    id: 'boolean-value',
+    label: 'Boolean',
+    category: 'input',
+    summary: 'True or false value for parameter inputs',
+  },
+  {
+    id: 'color-value',
+    label: 'Color',
+    category: 'input',
+    summary: 'Color value for parameter inputs',
+  },
+  {
     id: 'load-image',
     label: 'Load image',
     category: 'input',

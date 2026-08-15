@@ -59,10 +59,12 @@ test('user imports an image and previews every mask interpretation', async ({
   await page.getByRole('button', { name: 'Add to canvas' }).click()
   const previewNode = page.getByLabel('Image preview node')
   await loadNode
-    .getByLabel('Image output')
+    .getByLabel('Image output', { exact: true })
     .dragTo(previewNode.getByLabel('Image input'))
 
-  const canvas = page.getByRole('img', { name: 'Image preview, 1 by 1 pixels' })
+  const canvas = previewNode.getByRole('img', {
+    name: 'Image preview, 1 by 1 pixels',
+  })
   await expect(canvas).toHaveAttribute('data-pixel-sample', '64,128,191,128')
   expect(
     await canvas.evaluate((element) =>
@@ -74,9 +76,8 @@ test('user imports an image and previews every mask interpretation', async ({
     ),
   ).toEqual([64, 128, 191, 128])
 
-  await loadNode.click()
-  await page.getByLabel('Output mode').selectOption('mask')
-  const maskSource = page.getByLabel('Mask source')
+  await loadNode.getByLabel('Load image Output').selectOption('mask')
+  const maskSource = loadNode.getByLabel('Load image Mask source')
   const expectedSamples = {
     luminosity: '52,52,52,255',
     alpha: '128,128,128,255',
@@ -106,7 +107,9 @@ test('user imports an image and previews every mask interpretation', async ({
   await maskSource.selectOption('alpha')
   await expect(canvas).toHaveAttribute('data-pixel-sample', '128,128,128,255')
   await expect(canvas).toHaveAttribute('data-cache-hit', 'true')
-  await page.getByLabel('Invert mask').check()
+  await loadNode
+    .getByRole('checkbox', { name: 'Invert mask', exact: true })
+    .check()
   await expect(canvas).toHaveAttribute('data-pixel-sample', '127,127,127,255')
 
   await page.getByRole('button', { name: 'Save project' }).click()
@@ -115,7 +118,9 @@ test('user imports an image and previews every mask interpretation', async ({
   await expect(page.getByLabel('Image preview node')).toBeVisible()
   await page.getByRole('button', { name: 'Image preview' }).click()
   await expect(
-    page.getByRole('img', { name: 'Image preview, 1 by 1 pixels' }),
+    page
+      .getByLabel('Image preview node')
+      .getByRole('img', { name: 'Image preview, 1 by 1 pixels' }),
   ).toHaveAttribute('data-pixel-sample', '127,127,127,255')
 
   const screenshotPath = testInfo.outputPath('m4-mask-preview.png')
@@ -168,10 +173,10 @@ test('preview rejects decoded allocation beyond the worker memory budget', async
   await page.getByRole('button', { name: 'Image preview' }).click()
   await page.getByRole('button', { name: 'Add to canvas' }).click()
   await loadNode
-    .getByLabel('Image output')
+    .getByLabel('Image output', { exact: true })
     .dragTo(page.getByLabel('Image preview node').getByLabel('Image input'))
   await expect(
-    page.getByRole('alert').filter({
+    page.getByLabel('Image preview node').getByRole('alert').filter({
       hasText: 'Decoded image exceeds the preview memory budget',
     }),
   ).toBeVisible()

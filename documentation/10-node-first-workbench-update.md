@@ -102,6 +102,16 @@ Widget interactions carry a `nodrag`/no-pan contract so sliders, selects, text,
 scrolling, and pointer preview actions do not move the node. Continuous widget
 edits preview continuously but coalesce into one undo command at commit.
 
+### 4.2A Node insertion
+
+Node templates drag directly from the library to the graph and create a node
+centered at the drop's graph-space coordinate. `/` and `Shift+A` open one centered
+search-and-add chooser and place the chosen node at the center of the visible
+graph framing. Double-clicking empty canvas opens that same chooser but preserves
+the clicked graph coordinate for placement. The chooser supports pointer choice,
+Arrow Up/Down, Enter, and Escape, with label/category/summary filtering. All
+insertion paths are pan/zoom aware and create one undoable command.
+
 ### 4.3 Node-local previews
 
 Preview-producing nodes reserve stable aspect-ratio space. Existing results remain
@@ -201,6 +211,8 @@ layers reopen only inside R1.
   definitions and prove parity between node and inspector edits.
 - R1.5 Re-run graph accessibility/performance gates with interactive DOM widgets
   and node-local bitmaps at 25/100/300 node tiers.
+- R1.6 Add shared coordinate-correct insertion for library drag/drop, `/` and
+  `Shift+A` search, and empty-canvas double-click search.
 
 ### R1 exit evidence
 
@@ -213,6 +225,8 @@ layers reopen only inside R1.
   loading/error/cached states.
 - Widget hit testing never drags/pans nodes; focus order and screen-reader names are
   valid at 100% and 200% zoom.
+- All node insertion paths place at their specified graph-space point under
+  pan/zoom, support pointer and Arrow/Enter selection, and cancel without mutation.
 - The 300-node stress workflow remains within graph response budgets under the
   compact detail policy; a realistic 25-node workflow with expanded controls and
   previews remains readable and responsive.

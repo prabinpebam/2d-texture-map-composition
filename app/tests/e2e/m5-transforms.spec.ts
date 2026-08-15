@@ -121,10 +121,10 @@ test('user composes resize brightness and color corrections in preview', async (
     .getByLabel('Output output')
     .dragTo(brightnessNode.getByLabel('Image input'))
   await brightnessNode
-    .getByLabel('Image output')
+    .getByLabel('Image output', { exact: true })
     .dragTo(colorNode.getByLabel('Image input'))
   await colorNode
-    .getByLabel('Image output')
+    .getByLabel('Image output', { exact: true })
     .dragTo(previewNode.getByLabel('Image input'))
 
   const canvas = page.getByRole('img', { name: 'Image preview, 2 by 2 pixels' })

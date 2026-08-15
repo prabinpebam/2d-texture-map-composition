@@ -28,7 +28,7 @@ export type PreviewOperation =
       tintMix: number
     }
 
-export interface ImagePreviewRequest {
+export interface RenderImagePreviewRequest {
   protocolVersion: typeof IMAGE_PREVIEW_PROTOCOL_VERSION
   type: 'render-preview'
   requestId: string
@@ -42,6 +42,17 @@ export interface ImagePreviewRequest {
   maxLongEdge: number
   operations: readonly PreviewOperation[]
 }
+
+export interface CancelImagePreviewRequest {
+  protocolVersion: typeof IMAGE_PREVIEW_PROTOCOL_VERSION
+  type: 'cancel-preview'
+  requestId: string
+  nodeId: string
+  generation: number
+}
+
+export type ImagePreviewRequest =
+  RenderImagePreviewRequest | CancelImagePreviewRequest
 
 export type ImagePreviewResponse =
   | {
@@ -72,12 +83,15 @@ export function isImagePreviewRequest(
 ): value is ImagePreviewRequest {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Record<string, unknown>
-  return (
+  const common =
     candidate.protocolVersion === IMAGE_PREVIEW_PROTOCOL_VERSION &&
-    candidate.type === 'render-preview' &&
     typeof candidate.requestId === 'string' &&
     typeof candidate.nodeId === 'string' &&
-    Number.isSafeInteger(candidate.generation) &&
+    Number.isSafeInteger(candidate.generation)
+  if (!common) return false
+  if (candidate.type === 'cancel-preview') return true
+  return (
+    candidate.type === 'render-preview' &&
     typeof candidate.cacheKey === 'string' &&
     candidate.cacheKey.length > 0 &&
     candidate.blob instanceof Blob &&

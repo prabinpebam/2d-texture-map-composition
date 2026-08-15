@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   Blend,
@@ -13,18 +13,21 @@ import {
   Image,
   ImagePlus,
   Layers3,
+  ListOrdered,
   LockKeyhole,
   Map,
   Maximize2,
   Moon,
   Palette,
   PanelRight,
+  Play,
   Plus,
   Redo2,
   Search,
   Save,
   Settings,
   SlidersHorizontal,
+  Square,
   Sun,
   SunMedium,
   Trash2,
@@ -51,6 +54,7 @@ import {
 import { IconButton } from './components/IconButton'
 import { ImagePreviewCanvas } from './components/ImagePreviewCanvas'
 import { NodeWidgetFields } from './components/NodeWidgetFields'
+import { NodeSearchDialog } from './components/NodeSearchDialog'
 import {
   ProjectBrowserDialog,
   type LocalProjectSummary,
@@ -75,13 +79,20 @@ import {
 import { useGraphStore } from './app/graphState'
 import { getDefaultNodeSize, NODE_TYPE_REGISTRY } from './domain/graph'
 import { serializeGraphWorkflow } from './app/graphWorkflowExport'
-import { encodedSrgbToLinear } from './app/transformCatalog'
+import { importImageAsset, type ImportedImageAsset } from './app/imageAssets'
 import {
-  importImageAsset,
-  renderImageAssetPreview,
-  type ImageAssetPreview,
-  type PreviewOperation,
-} from './app/imageAssets'
+  cancelPreviewBranch,
+  renderPreviewBranch,
+  resolvePreviewBranch,
+  resolveSourcePreviewBranch,
+} from './app/previewGraph'
+import { enqueueRun, interruptRuns, useRunRecords } from './app/runQueue'
+import {
+  getPreviewState,
+  replacePreviewStates,
+  setPreviewState,
+  usePreviewState,
+} from './app/previewState'
 import {
   createLocalProject,
   createLocalProjectCopy,
@@ -116,11 +127,28 @@ const THEME_ICONS = {
 } satisfies Record<ThemePreference, typeof Sun>
 
 const NODE_TYPES = { workflow: WorkflowNode }
+const NODE_DRAG_TYPE = 'application/x-textureflow-node'
 
 function getAutomaticNodePosition(nodeCount: number) {
   return {
     x: 100 + (nodeCount % 3) * 340,
     y: 100 + Math.floor(nodeCount / 3) * 560,
+  }
+}
+
+function getImageAssetParameters(asset: ImportedImageAsset) {
+  return {
+    assetDigest: asset.digest,
+    fileName: asset.fileName,
+    mediaType: asset.sniffed.mediaType,
+    width: asset.sniffed.width,
+    height: asset.sniffed.height,
+    profileDecision: 'embedded-profile-or-srgb-fallback',
+    orientationDecision: 'decoder-applied-once',
+    normalizationVersion: 'import-normalization.v1',
+    mode: 'color',
+    maskSource: 'luminosity',
+    invert: false,
   }
 }
 
@@ -165,6 +193,7 @@ function App() {
     'inspector',
   )
   const [inspectorVisible, setInspectorVisible] = useState(true)
+  const [queueOpen, setQueueOpen] = useState(false)
   const [selectedTemplate, setSelectedTemplate] =
     useState<NodeCatalogItem | null>(null)
   const [capabilities] = useState(detectEnvironment)
@@ -176,16 +205,20 @@ function App() {
   >(() => (capabilities.indexedDb ? 'checking' : 'unavailable'))
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [workflowNotice, setWorkflowNotice] = useState<string | null>(null)
-  const [previewState, setPreviewState] = useState<
-    | { status: 'idle' | 'loading' }
-    | { status: 'ready'; result: ImageAssetPreview }
-    | { status: 'error'; message: string }
-  >({ status: 'idle' })
   const [graphCommand, setGraphCommand] = useState<GraphCommandMode | null>(
     null,
   )
   const [nodeMenuOpen, setNodeMenuOpen] = useState(false)
+  const [renamingNodeId, setRenamingNodeId] = useState<string | null>(null)
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<readonly string[]>([])
+  const [dragPositions, setDragPositions] = useState<
+    Readonly<Record<string, { x: number; y: number }>>
+  >({})
+  const [nodeSearchRequest, setNodeSearchRequest] = useState<{
+    point: { x: number; y: number }
+  } | null>(null)
   const graphDocument = useGraphStore((state) => state.document)
+  const authoredRevision = useGraphStore((state) => state.revision)
   const graphViewport = useGraphStore((state) => state.viewport)
   const selectedNodeIds = useGraphStore((state) => state.selectedNodeIds)
   const undoStack = useGraphStore((state) => state.undoStack)
@@ -202,6 +235,7 @@ function App() {
   const updateNodeParameters = useGraphStore(
     (state) => state.updateNodeParameters,
   )
+  const renameNode = useGraphStore((state) => state.renameNode)
   const moveSelectedBy = useGraphStore((state) => state.moveSelectedBy)
   const duplicateSelected = useGraphStore((state) => state.duplicateSelected)
   const bringSelectedToFront = useGraphStore(
@@ -211,6 +245,8 @@ function App() {
     (state) => state.toggleSelectedState,
   )
   const connectNodes = useGraphStore((state) => state.connectNodes)
+  const disconnectEdge = useGraphStore((state) => state.disconnectEdge)
+  const reconnectEdge = useGraphStore((state) => state.reconnectEdge)
   const replaceDocument = useGraphStore((state) => state.replaceDocument)
   const hydrateDocument = useGraphStore((state) => state.hydrateDocument)
   const setViewport = useGraphStore((state) => state.setViewport)
@@ -223,6 +259,27 @@ function App() {
     activeProject.id,
     activeProject.name,
   )
+  const runRecords = useRunRecords(capabilities.workers).filter(
+    (record) => record.projectId === activeProject.id,
+  )
+  const currentExecutionContext = useRef({
+    projectId: activeProject.id,
+    revision: authoredRevision,
+  })
+  const lastTitleMouseDown = useRef<{
+    nodeId: string
+    at: number
+    x: number
+    y: number
+  } | null>(null)
+  const suppressNextPaneDoubleClick = useRef(false)
+
+  useEffect(() => {
+    currentExecutionContext.current = {
+      projectId: activeProject.id,
+      revision: authoredRevision,
+    }
+  }, [activeProject.id, authoredRevision])
 
   const appBarRef = useRef<HTMLElement>(null)
   const libraryRef = useRef<HTMLElement>(null)
@@ -239,31 +296,51 @@ function App() {
   const ThemeIcon = THEME_ICONS[theme]
   const nextThemeValue = nextTheme(theme)
   const normalizedCatalogQuery = catalogQuery.trim().toLowerCase()
+  const activeRun = runRecords.find(
+    (record) => record.status === 'queued' || record.status === 'running',
+  )
   const flowNodes: WorkflowFlowNode[] = graphDocument.nodes.map((node) => {
     const definition = NODE_TYPE_REGISTRY[node.type]
     const defaultSize = getDefaultNodeSize(node.type)
+    const latestRun = [...runRecords]
+      .reverse()
+      .find((record) => record.demandedNodeIds.includes(node.id))
     return {
       id: node.id,
       type: 'workflow',
-      position: node.position,
+      position: dragPositions[node.id] ?? node.position,
       selected: selectedNodeIds.includes(node.id),
       draggable: !node.locked && projectPersistence.access === 'writer',
+      dragHandle: '.drag-handle',
       ariaLabel: `${node.label} node`,
       data: {
         label: node.label,
         summary: definition.summary,
         inputs: definition.inputs,
         outputs: definition.outputs,
+        connectedInputIds: graphDocument.edges
+          .filter((edge) => edge.targetNodeId === node.id)
+          .map((edge) => edge.targetPortId),
+        renaming: renamingNodeId === node.id,
         bypassed: node.bypassed,
         muted: node.muted,
         locked: node.locked,
         node,
-        preview:
-          node.type === 'preview'
-            ? previewState
-            : ({ status: 'idle' } as const),
+        execution: latestRun?.nodes[node.id] ?? null,
+        stale: !!latestRun && latestRun.revision < authoredRevision,
+        onRunOutput:
+          node.type === 'preview' ? () => startRun([node.id]) : undefined,
         onParameters: (patch: Record<string, unknown>) =>
           updateNodeParameters(node.id, patch),
+        onLoadImage:
+          node.type === 'load-image'
+            ? (file: File) => void replaceNodeImage(node.id, file)
+            : undefined,
+        onRename: (label: string) => {
+          renameNode(node.id, label)
+          setRenamingNodeId(null)
+        },
+        onRenameCancel: () => setRenamingNodeId(null),
         onResize: (width: number, height: number) =>
           setNodeGeometry(node.id, {
             ...node.position,
@@ -305,125 +382,220 @@ function App() {
     sourceHandle: edge.sourcePortId,
     target: edge.targetNodeId,
     targetHandle: edge.targetPortId,
-    type: 'smoothstep',
+    selected: selectedEdgeIds.includes(edge.id),
+    type: 'default',
+    reconnectable: projectPersistence.access === 'writer',
+    style: {
+      stroke: `var(--port-${
+        NODE_TYPE_REGISTRY[
+          graphDocument.nodes.find((node) => node.id === edge.sourceNodeId)
+            ?.type ?? ''
+        ]?.outputs.find((output) => output.id === edge.sourcePortId)
+          ?.dataType ?? 'image'
+      })`,
+    },
   }))
-  const previewNode = graphDocument.nodes.find(
-    (node) => node.type === 'preview',
+  const previewBranches = useMemo(
+    () =>
+      Object.fromEntries(
+        graphDocument.nodes
+          .filter(
+            (node) => node.type === 'preview' || node.type === 'load-image',
+          )
+          .map((node) => [
+            node.id,
+            node.type === 'preview'
+              ? resolvePreviewBranch(graphDocument, node.id)
+              : resolveSourcePreviewBranch(graphDocument, node.id),
+          ]),
+      ),
+    [graphDocument],
   )
-  const previewChain = useMemo(() => {
-    if (!previewNode) return null
-    let currentNode = previewNode
-    const reversedOperations: PreviewOperation[] = []
-    const visited = new Set<string>()
-    while (!visited.has(currentNode.id)) {
-      visited.add(currentNode.id)
-      const edge = graphDocument.edges.find(
-        (candidate) => candidate.targetNodeId === currentNode.id,
-      )
-      if (!edge) return null
-      const source = graphDocument.nodes.find(
-        (candidate) => candidate.id === edge.sourceNodeId,
-      )
-      if (!source) return null
-      if (source.type === 'load-image') {
-        return {
-          source,
-          operations: reversedOperations.reverse(),
-        }
-      }
-      const parameters = source.parameters ?? {}
-      if (source.type === 'resize') {
-        reversedOperations.push({
-          type: 'resize',
-          width: Number(parameters.width ?? 1),
-          height: Number(parameters.height ?? 1),
-          kernel: String(parameters.resolvedKernel ?? 'mitchell.v1'),
-        })
-      } else if (source.type === 'brightness-correction') {
-        reversedOperations.push({
-          type: 'brightness',
-          exposure: Number(parameters.exposure ?? 0),
-          highlights: Number(parameters.highlights ?? 0),
-          shadows: Number(parameters.shadows ?? 0),
-          whites: Number(parameters.whites ?? 0),
-          blacks: Number(parameters.blacks ?? 0),
-        })
-      } else if (source.type === 'color-correction') {
-        const tintHex = String(parameters.tintHex ?? '#ffffff')
-        const tint = [1, 3, 5].map((offset) =>
-          encodedSrgbToLinear(
-            Number.parseInt(tintHex.slice(offset, offset + 2), 16) / 255,
-          ),
-        )
-        reversedOperations.push({
-          type: 'color-correction',
-          temperature: Number(parameters.temperature ?? 0),
-          greenMagenta: Number(parameters.greenMagenta ?? 0),
-          hueDegrees: Number(parameters.hueDegrees ?? 0),
-          saturation: Number(parameters.saturation ?? 0),
-          tint: [
-            Number(tint[0] ?? 1),
-            Number(tint[1] ?? 1),
-            Number(tint[2] ?? 1),
-          ],
-          tintMix: Number(parameters.tintMix ?? 0),
-        })
-      } else {
-        return null
-      }
-      currentNode = source
+  const selectedPreviewBranch =
+    selectedNode?.type === 'preview' ? previewBranches[selectedNode.id] : null
+  const selectedPreviewState = usePreviewState(
+    selectedNode?.type === 'preview' ? selectedNode.id : '',
+  )
+
+  function clientPointToGraph(clientX: number, clientY: number) {
+    const bounds = graphRef.current?.getBoundingClientRect()
+    if (!bounds) return null
+    return {
+      x: (clientX - bounds.left - graphViewport.x) / graphViewport.zoom,
+      y: (clientY - bounds.top - graphViewport.y) / graphViewport.zoom,
     }
-    return null
-  }, [graphDocument, previewNode])
-  const previewSource = previewChain?.source
+  }
+
+  function visibleGraphCenter() {
+    const bounds = graphRef.current?.getBoundingClientRect()
+    return bounds
+      ? clientPointToGraph(
+          bounds.left + bounds.width / 2,
+          bounds.top + bounds.height / 2,
+        )
+      : null
+  }
+
+  function addNodeCentered(type: string, point: { x: number; y: number }) {
+    const size = getDefaultNodeSize(type)
+    addNode(type, {
+      x: point.x - size.width / 2,
+      y: point.y - size.height / 2,
+    })
+  }
+
+  const openSearchAtViewportCenter = useEffectEvent(() => {
+    const point = visibleGraphCenter()
+    if (point) setNodeSearchRequest({ point })
+  })
 
   useEffect(() => {
-    const digest = previewSource?.parameters?.assetDigest
-    if (
-      !previewNode ||
-      !previewSource ||
-      typeof digest !== 'string' ||
-      !digest
-    ) {
-      return
+    function handleNodeSearchShortcut(event: globalThis.KeyboardEvent) {
+      const target = event.target
+      if (
+        event.key !== '/' ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable) ||
+        projectPersistence.access !== 'writer' ||
+        nodeSearchRequest ||
+        graphCommand ||
+        diagnosticsOpen ||
+        projectBrowserOpen
+      ) {
+        return
+      }
+      event.preventDefault()
+      openSearchAtViewportCenter()
     }
-    const mode = previewSource.parameters?.mode === 'mask' ? 'mask' : 'color'
-    const source = previewSource.parameters?.maskSource
-    const maskSource =
-      source === 'alpha' ||
-      source === 'red' ||
-      source === 'green' ||
-      source === 'blue'
-        ? source
-        : 'luminosity'
+    document.addEventListener('keydown', handleNodeSearchShortcut)
+    return () =>
+      document.removeEventListener('keydown', handleNodeSearchShortcut)
+  }, [
+    diagnosticsOpen,
+    graphCommand,
+    nodeSearchRequest,
+    projectBrowserOpen,
+    projectPersistence.access,
+  ])
+
+  useEffect(() => {
     let active = true
     queueMicrotask(() => {
-      if (active) setPreviewState({ status: 'loading' })
+      if (!active) return
+      replacePreviewStates(
+        Object.fromEntries(
+          Object.entries(previewBranches).map(([nodeId, branch]) => {
+            const previousState = getPreviewState(nodeId)
+            const previous =
+              previousState?.status === 'ready'
+                ? previousState.result
+                : previousState?.status === 'loading' ||
+                    previousState?.status === 'error'
+                  ? previousState.previous
+                  : undefined
+            return [
+              nodeId,
+              branch ? { status: 'loading', previous } : { status: 'idle' },
+            ]
+          }),
+        ),
+      )
     })
-    void renderImageAssetPreview(activeProject.id, previewNode.id, digest, {
-      mode,
-      maskSource,
-      invert: previewSource.parameters?.invert === true,
-      operations: previewChain.operations,
-    })
-      .then((result) => {
-        if (active) setPreviewState({ status: 'ready', result })
-      })
-      .catch((error: unknown) => {
-        if (
-          active &&
-          !(error instanceof Error && error.message === 'Preview superseded')
-        ) {
-          setPreviewState({
+    for (const [nodeId, branch] of Object.entries(previewBranches)) {
+      if (!branch) continue
+      void renderPreviewBranch(activeProject.id, branch)
+        .then((result) => {
+          if (!active) return
+          setPreviewState(nodeId, { status: 'ready', result })
+        })
+        .catch((error: unknown) => {
+          if (
+            !active ||
+            (error instanceof Error &&
+              (error.message === 'Preview superseded' ||
+                error.message === 'Preview canceled'))
+          ) {
+            return
+          }
+          const state = getPreviewState(nodeId)
+          setPreviewState(nodeId, {
             status: 'error',
             message: error instanceof Error ? error.message : 'Preview failed',
+            previous: state.status === 'loading' ? state.previous : undefined,
           })
-        }
-      })
+        })
+    }
     return () => {
       active = false
     }
-  }, [activeProject.id, previewChain, previewNode, previewSource])
+  }, [activeProject.id, previewBranches])
+
+  function startRun(targetOutputIds?: readonly string[]) {
+    const capturedDocument = graphDocument
+    const outputNodeIds =
+      targetOutputIds ??
+      capturedDocument.nodes
+        .filter(
+          (node) =>
+            NODE_TYPE_REGISTRY[node.type].category === 'output' && !node.muted,
+        )
+        .map((node) => node.id)
+    const outputCacheKeys = Object.fromEntries(
+      outputNodeIds.flatMap((nodeId) => {
+        const branch = resolvePreviewBranch(capturedDocument, nodeId)
+        return branch ? [[nodeId, branch.cacheKey]] : []
+      }),
+    )
+    enqueueRun(
+      {
+        projectId: activeProject.id,
+        revision: authoredRevision,
+        document: capturedDocument,
+        targetOutputIds,
+        outputCacheKeys,
+      },
+      {
+        execute: async (context) => {
+          const branch = resolvePreviewBranch(capturedDocument, context.nodeId)
+          if (!branch) throw new Error('Output has no executable image branch')
+          const result = await renderPreviewBranch(
+            context.projectId,
+            branch,
+            `${context.nodeId}:run:${context.runId}`,
+          )
+          const current = currentExecutionContext.current
+          if (
+            current.projectId === context.projectId &&
+            current.revision === context.revision
+          ) {
+            setPreviewState(context.nodeId, { status: 'ready', result })
+          }
+          return { cacheHit: result.cacheHit }
+        },
+        cancel: (context) =>
+          cancelPreviewBranch(`${context.nodeId}:run:${context.runId}`),
+      },
+    )
+    setQueueOpen(true)
+    setInspectorVisible(false)
+  }
+
+  const runCurrentWorkflow = useEffectEvent(() => startRun())
+
+  useEffect(() => {
+    function handleRunShortcut(event: globalThis.KeyboardEvent) {
+      if (!(event.ctrlKey && event.key === 'Enter')) return
+      event.preventDefault()
+      runCurrentWorkflow()
+    }
+    document.addEventListener('keydown', handleRunShortcut)
+    return () => document.removeEventListener('keydown', handleRunShortcut)
+  }, [])
 
   useEffect(() => {
     function handleRegionNavigation(event: globalThis.KeyboardEvent) {
@@ -520,6 +692,19 @@ function App() {
         return
       }
       if (event.key === 'Delete') {
+        if (selectedEdgeIds.length > 0) {
+          event.preventDefault()
+          event.stopPropagation()
+          for (const edgeId of selectedEdgeIds) disconnectEdge(edgeId)
+          setSelectedEdgeIds([])
+          return
+        }
+        if (
+          document.activeElement instanceof Element &&
+          document.activeElement.closest('.react-flow__edge')
+        ) {
+          return
+        }
         event.preventDefault()
         event.stopPropagation()
         deleteSelected()
@@ -550,7 +735,7 @@ function App() {
         if (command === 'a') {
           event.preventDefault()
           event.stopPropagation()
-          setGraphCommand('add')
+          openSearchAtViewportCenter()
         } else if (command === 'c' && selectedNodeIds.length === 1) {
           event.preventDefault()
           event.stopPropagation()
@@ -569,6 +754,7 @@ function App() {
   }, [
     clearSelection,
     deleteSelected,
+    disconnectEdge,
     graphDocument.nodes,
     moveSelectedBy,
     projectPersistence.access,
@@ -577,6 +763,7 @@ function App() {
     toggleSelectedState,
     undo,
     redo,
+    selectedEdgeIds,
     setNodeGeometry,
   ])
 
@@ -696,26 +883,33 @@ function App() {
     )
   }
 
-  async function importImages(files: FileList) {
+  async function replaceNodeImage(nodeId: string, file: File) {
+    try {
+      const asset = await importImageAsset(activeProject.id, file)
+      if (!updateNodeParameters(nodeId, getImageAssetParameters(asset))) {
+        throw new Error('The selected Load image node cannot be edited')
+      }
+      setWorkflowNotice(`Loaded ${file.name}`)
+    } catch (error) {
+      setWorkflowNotice(
+        `${file.name}: ${error instanceof Error ? error.message : 'Import failed'}`,
+      )
+    }
+  }
+
+  async function importImages(files: readonly File[]) {
     let imported = 0
     const failures: string[] = []
-    for (const file of Array.from(files)) {
+    for (const file of files) {
       try {
         const asset = await importImageAsset(activeProject.id, file)
         const nodeCount = graphDocument.nodes.length + imported
-        addNode('load-image', getAutomaticNodePosition(nodeCount), undefined, {
-          assetDigest: asset.digest,
-          fileName: asset.fileName,
-          mediaType: asset.sniffed.mediaType,
-          width: asset.sniffed.width,
-          height: asset.sniffed.height,
-          profileDecision: 'embedded-profile-or-srgb-fallback',
-          orientationDecision: 'decoder-applied-once',
-          normalizationVersion: 'import-normalization.v1',
-          mode: 'color',
-          maskSource: 'luminosity',
-          invert: false,
-        })
+        addNode(
+          'load-image',
+          getAutomaticNodePosition(nodeCount),
+          undefined,
+          getImageAssetParameters(asset),
+        )
         imported += 1
       } catch (error) {
         failures.push(
@@ -733,6 +927,59 @@ function App() {
     )
   }
 
+  const handleImagePaste = useEffectEvent((event: ClipboardEvent) => {
+    const activeElement = document.activeElement
+    if (
+      activeElement instanceof HTMLInputElement ||
+      activeElement instanceof HTMLTextAreaElement ||
+      activeElement instanceof HTMLSelectElement ||
+      (activeElement instanceof HTMLElement && activeElement.isContentEditable)
+    ) {
+      return
+    }
+    const files = Array.from(event.clipboardData?.files ?? []).filter(
+      (file) =>
+        file.type.startsWith('image/') || /\.(?:png|jpe?g)$/i.test(file.name),
+    )
+    if (files.length === 0) return
+    event.preventDefault()
+    const selectedLoadNode =
+      selectedNodeIds.length === 1
+        ? graphDocument.nodes.find(
+            (node) =>
+              node.id === selectedNodeIds[0] && node.type === 'load-image',
+          )
+        : null
+    if (selectedLoadNode) {
+      void replaceNodeImage(selectedLoadNode.id, files[0])
+      return
+    }
+    const point = visibleGraphCenter()
+    if (!point) return
+    void importImageAsset(activeProject.id, files[0])
+      .then((asset) => {
+        const size = getDefaultNodeSize('load-image')
+        addNode(
+          'load-image',
+          { x: point.x - size.width / 2, y: point.y - size.height / 2 },
+          undefined,
+          getImageAssetParameters(asset),
+        )
+        setWorkflowNotice(`Pasted ${files[0].name || 'clipboard image'}`)
+      })
+      .catch((error: unknown) => {
+        setWorkflowNotice(
+          `Clipboard image: ${error instanceof Error ? error.message : 'Import failed'}`,
+        )
+      })
+  })
+
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => handleImagePaste(event)
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [])
+
   async function refreshLocalProjects() {
     setLocalProjects(await listLocalProjects())
   }
@@ -743,7 +990,12 @@ function App() {
   }
 
   return (
-    <div className="workspace" data-theme={theme}>
+    <div
+      className="workspace"
+      data-authored-revision={String(authoredRevision)}
+      data-theme={theme}
+      data-undo-depth={String(undoStack.length)}
+    >
       <header className="app-bar" ref={appBarRef} tabIndex={-1}>
         <div className="brand-lockup" aria-label="TextureFlow">
           <span className="brand-mark" aria-hidden="true">
@@ -815,6 +1067,37 @@ function App() {
           </IconButton>
           <span className="toolbar-separator" aria-hidden="true" />
           <IconButton
+            disabled={
+              !capabilities.workers ||
+              !graphDocument.nodes.some(
+                (node) =>
+                  NODE_TYPE_REGISTRY[node.type].category === 'output' &&
+                  !node.muted,
+              )
+            }
+            label="Run workflow"
+            onClick={() => startRun()}
+          >
+            <Play aria-hidden="true" size={17} />
+          </IconButton>
+          <IconButton
+            disabled={!activeRun}
+            label="Interrupt runs"
+            onClick={() => interruptRuns(activeProject.id)}
+          >
+            <Square aria-hidden="true" size={15} />
+          </IconButton>
+          <IconButton
+            label="Run history"
+            onClick={() => {
+              setQueueOpen((open) => !open)
+              setInspectorVisible(false)
+            }}
+          >
+            <ListOrdered aria-hidden="true" size={17} />
+          </IconButton>
+          <span className="toolbar-separator" aria-hidden="true" />
+          <IconButton
             disabled={projectPersistence.access !== 'writer'}
             label="Import images"
             onClick={() => imageInputRef.current?.click()}
@@ -828,7 +1111,7 @@ function App() {
             multiple
             onChange={(event) => {
               const files = event.target.files
-              if (files) void importImages(files)
+              if (files) void importImages(Array.from(files))
               event.target.value = ''
             }}
             ref={imageInputRef}
@@ -922,10 +1205,13 @@ function App() {
           <IconButton disabled label="Settings">
             <Settings aria-hidden="true" size={17} />
           </IconButton>
-          {!inspectorVisible ? (
+          {!inspectorVisible && !queueOpen ? (
             <IconButton
               label="Show inspector"
-              onClick={() => setInspectorVisible(true)}
+              onClick={() => {
+                setInspectorVisible(true)
+                setQueueOpen(false)
+              }}
             >
               <PanelRight aria-hidden="true" size={17} />
             </IconButton>
@@ -989,7 +1275,12 @@ function App() {
                         <button
                           aria-pressed={selectedTemplate?.id === item.id}
                           className="catalog-item"
+                          draggable
                           key={item.id}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = 'copy'
+                            event.dataTransfer.setData(NODE_DRAG_TYPE, item.id)
+                          }}
                           onClick={() => setSelectedTemplate(item)}
                           type="button"
                         >
@@ -1034,6 +1325,73 @@ function App() {
         <main
           aria-label="Graph canvas"
           className="graph-region"
+          onDoubleClick={(event) => {
+            if (suppressNextPaneDoubleClick.current) {
+              suppressNextPaneDoubleClick.current = false
+              return
+            }
+            const target = event.target as Element
+            if (
+              target.closest('.react-flow__node') ||
+              target.closest('.react-flow__controls') ||
+              target.closest('.react-flow__minimap') ||
+              !target.closest('.react-flow__pane')
+            ) {
+              return
+            }
+            const point = clientPointToGraph(event.clientX, event.clientY)
+            if (point) setNodeSearchRequest({ point })
+          }}
+          onDragOver={(event) => {
+            if (!event.dataTransfer.types.includes(NODE_DRAG_TYPE)) return
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'copy'
+          }}
+          onDrop={(event) => {
+            const type = event.dataTransfer.getData(NODE_DRAG_TYPE)
+            if (!NODE_TYPE_REGISTRY[type]) return
+            event.preventDefault()
+            const point = clientPointToGraph(event.clientX, event.clientY)
+            if (point) addNodeCentered(type, point)
+          }}
+          onMouseDownCapture={(event) => {
+            if (event.button !== 0) return
+            const target = event.target as Element
+            const nodeElement = target.closest<HTMLElement>(
+              '.react-flow__node[data-id]',
+            )
+            const nodeId = nodeElement?.dataset.id
+            const now = performance.now()
+            const previous = lastTitleMouseDown.current
+            if (
+              previous &&
+              now - previous.at < 400 &&
+              Math.hypot(
+                event.clientX - previous.x,
+                event.clientY - previous.y,
+              ) < 4
+            ) {
+              event.preventDefault()
+              event.stopPropagation()
+              lastTitleMouseDown.current = null
+              suppressNextPaneDoubleClick.current = true
+              const node = graphDocument.nodes.find(
+                (candidate) => candidate.id === previous.nodeId,
+              )
+              if (!node?.locked) setRenamingNodeId(previous.nodeId)
+              return
+            }
+            if (nodeId && target.closest('.workflow-node-header')) {
+              lastTitleMouseDown.current = {
+                nodeId,
+                at: now,
+                x: event.clientX,
+                y: event.clientY,
+              }
+            } else {
+              lastTitleMouseDown.current = null
+            }
+          }}
           ref={graphRef}
           tabIndex={-1}
         >
@@ -1070,14 +1428,59 @@ function App() {
                   targetPortId: connection.targetHandle,
                 })
               }}
-              onNodeClick={(event, node) => selectNode(node.id, event.shiftKey)}
+              onEdgeClick={(event, edge) => {
+                event.stopPropagation()
+                clearSelection()
+                setSelectedEdgeIds([edge.id])
+                graphRef.current?.focus()
+              }}
+              onNodeClick={(event, node) => {
+                setSelectedEdgeIds([])
+                selectNode(node.id, event.shiftKey)
+              }}
+              onNodeDrag={(_, node) => {
+                setDragPositions((current) => ({
+                  ...current,
+                  [node.id]: node.position,
+                }))
+              }}
               onNodeDragStop={(_, node) => {
                 if (projectPersistence.access === 'writer') {
                   moveNode(node.id, node.position)
                 }
+                setDragPositions((current) => {
+                  const next = { ...current }
+                  delete next[node.id]
+                  return next
+                })
               }}
               onMoveEnd={(_, viewport) => setViewport(viewport)}
-              onPaneClick={clearSelection}
+              onEdgesDelete={(edges) => {
+                for (const edge of edges) disconnectEdge(edge.id)
+                setSelectedEdgeIds([])
+              }}
+              onPaneClick={() => {
+                setSelectedEdgeIds([])
+                clearSelection()
+              }}
+              onReconnect={(oldEdge, connection) => {
+                if (
+                  !connection.source ||
+                  !connection.target ||
+                  !connection.sourceHandle ||
+                  !connection.targetHandle
+                ) {
+                  return
+                }
+                reconnectEdge(oldEdge.id, {
+                  sourceNodeId: connection.source,
+                  sourcePortId: connection.sourceHandle,
+                  targetNodeId: connection.target,
+                  targetPortId: connection.targetHandle,
+                })
+              }}
+              reconnectRadius={24}
+              zoomOnDoubleClick={false}
             >
               <NodeInternalsSync
                 nodeIdKey={graphDocument.nodes
@@ -1118,7 +1521,54 @@ function App() {
           )}
         </main>
 
-        {inspectorVisible ? (
+        {queueOpen ? (
+          <aside
+            aria-label="Run history"
+            className="run-history-panel"
+            tabIndex={-1}
+          >
+            <div className="run-history-header">
+              <div>
+                <p className="eyebrow">Execution</p>
+                <h2>Run history</h2>
+              </div>
+              <IconButton
+                label="Close run history"
+                onClick={() => setQueueOpen(false)}
+              >
+                <X aria-hidden="true" size={15} />
+              </IconButton>
+            </div>
+            {runRecords.length === 0 ? (
+              <p className="run-history-empty">No workflow runs yet</p>
+            ) : (
+              <ol className="run-history-list">
+                {[...runRecords].reverse().map((record) => (
+                  <li
+                    className="run-history-row"
+                    data-demanded-nodes={record.demandedNodeIds.join(',')}
+                    data-run-id={record.id}
+                    data-run-revision={String(record.revision)}
+                    data-target-outputs={record.targetOutputIds.join(',')}
+                    key={record.id}
+                  >
+                    <div>
+                      <strong>{record.status}</strong>
+                      <span>Revision {record.revision}</span>
+                    </div>
+                    <span>
+                      {record.demandedNodeIds.length} nodes ·{' '}
+                      {record.targetOutputIds.length} outputs
+                    </span>
+                    {record.diagnostic ? (
+                      <small>{record.diagnostic}</small>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+            )}
+          </aside>
+        ) : inspectorVisible ? (
           <aside
             aria-label="Inspector"
             className="inspector"
@@ -1222,6 +1672,17 @@ function App() {
                   <section className="inspector-section schema-inspector-fields">
                     <h3>Parameters</h3>
                     <NodeWidgetFields
+                      drivenKeys={
+                        new Set(
+                          graphDocument.edges
+                            .filter(
+                              (edge) => edge.targetNodeId === selectedNode.id,
+                            )
+                            .map((edge) => edge.targetPortId)
+                            .filter((id) => id.startsWith('parameter:'))
+                            .map((id) => id.slice('parameter:'.length)),
+                        )
+                      }
                       host="inspector"
                       node={selectedNode}
                       onChange={(patch) =>
@@ -1242,21 +1703,23 @@ function App() {
                     </span>
                   </div>
                 </section>
-                {previewNode ? (
+                {selectedNode?.type === 'preview' ? (
                   <section className="inspector-section preview-surface">
                     <h3>Preview</h3>
-                    {!previewSource ? (
+                    {!selectedPreviewBranch ? (
                       <p>Connect a Load image node.</p>
-                    ) : previewState.status === 'loading' ? (
+                    ) : selectedPreviewState?.status === 'loading' ? (
                       <p role="status">Rendering preview</p>
-                    ) : previewState.status === 'error' ? (
-                      <p role="alert">{previewState.message}</p>
-                    ) : previewState.status === 'ready' ? (
+                    ) : selectedPreviewState?.status === 'error' ? (
+                      <p role="alert">{selectedPreviewState.message}</p>
+                    ) : selectedPreviewState?.status === 'ready' ? (
                       <>
-                        <ImagePreviewCanvas result={previewState.result} />
+                        <ImagePreviewCanvas
+                          result={selectedPreviewState.result}
+                        />
                         <p>
-                          {previewState.result.sourceWidth} ×{' '}
-                          {previewState.result.sourceHeight} source
+                          {selectedPreviewState.result.sourceWidth} ×{' '}
+                          {selectedPreviewState.result.sourceHeight} source
                         </p>
                       </>
                     ) : null}
@@ -1461,10 +1924,6 @@ function App() {
       ) : null}
       {graphCommand ? (
         <GraphCommandDialog
-          addOptions={NODE_CATALOG.map((item) => ({
-            value: item.id,
-            label: item.label,
-          }))}
           connectionOptions={connectionOptions}
           geometry={
             selectedNode
@@ -1472,9 +1931,6 @@ function App() {
               : null
           }
           mode={graphCommand}
-          onAdd={(type) => {
-            addNode(type, getAutomaticNodePosition(graphDocument.nodes.length))
-          }}
           onClose={() => {
             setGraphCommand(null)
             requestAnimationFrame(() => graphRef.current?.focus())
@@ -1492,6 +1948,20 @@ function App() {
           onGeometry={(geometry) =>
             selectedNode ? setNodeGeometry(selectedNode.id, geometry) : false
           }
+        />
+      ) : null}
+      {nodeSearchRequest ? (
+        <NodeSearchDialog
+          items={NODE_CATALOG}
+          onChoose={(type) => {
+            addNodeCentered(type, nodeSearchRequest.point)
+            setNodeSearchRequest(null)
+            requestAnimationFrame(() => graphRef.current?.focus())
+          }}
+          onClose={() => {
+            setNodeSearchRequest(null)
+            requestAnimationFrame(() => graphRef.current?.focus())
+          }}
         />
       ) : null}
       {nodeMenuOpen ? (

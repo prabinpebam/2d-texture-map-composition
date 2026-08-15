@@ -56,8 +56,12 @@ flowchart LR
   loops, codec parsing, or IndexedDB calls.
 - `node-widget-schema`: one versioned definition for node-local and inspector
   fields, compact/advanced placement, units, defaults, validation, commit policy,
-  serialization keys, and optional input conversion. React node widgets and the
+  serialization keys, and typed parameter input sockets. React node widgets and the
   inspector render this schema; neither defines private parameters.
+- `effective-parameter-resolver`: resolves connected `parameter:<key>` values
+  before kernel dispatch and cache hashing without mutating serialized manual
+  fallbacks. Static semantic inputs and schema-generated parameter inputs compose
+  into the one canonical node type registry.
 - `run-queue-client`: Run, Run selected output, Interrupt, queue/history commands,
   and subscriptions. It does not evaluate nodes or mutate authored parameters.
 - `domain`: canonical authored state, commands, validation summaries, selection,
@@ -117,6 +121,11 @@ An edge is accepted only when source and target exist, handles exist, types are
 compatible, target cardinality allows it, and adding it does not create a cycle.
 Cycle detection occurs on the proposed in-memory graph before commit. Import
 validates the entire graph independently of UI checks.
+
+Editable widget fields generate optional single-cardinality typed inputs with
+canonical IDs `parameter:<serialization-key>`. A connected parameter edge takes
+precedence only for effective evaluation. The manual parameter remains authored,
+undoable, serializable, and immediately restorable on disconnect.
 
 ### Authoring, draft, and run separation
 

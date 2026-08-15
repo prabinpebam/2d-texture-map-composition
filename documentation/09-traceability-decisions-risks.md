@@ -61,10 +61,13 @@ No actionable seed statement is intentionally unmapped.
 | Source ID | Directive | Requirements/contracts | Milestone | Verification |
 | --- | --- | --- | --- | --- |
 | USR-001 | Controls and previews live directly in nodes; inspector remains optional/secondary; node management and workflow running follow familiar ComfyUI behavior | NOD-002/007/008/009, EXE-001..008, UX node-first amendment, Architecture explicit run queue | R1 then M5-M10 | E2E-013..017, 25/100/300-node performance, node/inspector parity |
+| USR-002 | Nodes insert by library drag/drop, `/` or `Shift+A` search at viewport center, and empty-canvas double-click search at the clicked point | GPH-011..013, UX node search and placement | R1.6 | E2E-018 coordinate, focus, cancel, pointer and keyboard evidence |
+| USR-003 | Node design, drag/resize, sockets, handles, and link gestures follow ComfyUI; every editable widget can be manually authored or externally driven through a typed socket | NOD-010..013, Architecture generated parameter inputs/effective resolver, authoritative ComfyUI amendment | R1.7-R1.10 then M5-M10 | E2E-019/020, socket/edge paint, fallback/override execution and round-trip |
 
-`USR-001` is captured normatively in
-`10-node-first-workbench-update.md`. It changes derived product behavior without
-editing the immutable seed.
+`USR-001` and `USR-002` are captured normatively in
+`10-node-first-workbench-update.md`; `USR-003` is captured in
+`11-comfyui-node-interaction-update.md`. They change derived product behavior
+without editing the immutable seed.
 
 ## 3. Requirement-to-Contract Summary
 

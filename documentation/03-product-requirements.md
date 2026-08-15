@@ -225,6 +225,16 @@ complete snapshot or the next complete snapshot, never a mixed project.
   edges among copied nodes, and never retain external edges accidentally.
 - **GPH-010 P1:** Users may add frames/groups for organization; groups do not alter
   processing semantics.
+- **GPH-011 P0:** Every node template in the library is draggable. Dropping it on
+  the graph creates one node centered at the pointer's graph-space coordinate;
+  dropping outside the graph creates no mutation.
+- **GPH-012 P0:** Pressing `/` while graph commands are available opens a centered
+  searchable node chooser. Typing filters by label, category, and summary;
+  pointer selection or Arrow Up/Down plus Enter inserts the chosen node at the
+  center of the current visible graph framing.
+- **GPH-013 P0:** Double-clicking empty canvas opens the same searchable chooser
+  and inserts the chosen node centered at the double-click graph coordinate.
+  Escape cancels without mutation and focus returns to the graph.
 
 ### 7.4 Common node contract
 
@@ -254,6 +264,25 @@ complete snapshot or the next complete snapshot, never a mixed project.
 - **NOD-009 P0:** Selected nodes expose nearby management for context-appropriate
   Run partial, bypass, mute, lock, duplicate, and delete; the context menu remains
   the complete equivalent command surface.
+- **NOD-010 P0:** Node title bars are the pointer drag surface and nodes resize
+  from every corner. Widgets, previews, sockets, and body commands never move the
+  node. Node chrome, socket placement, links, and direct connection gestures
+  follow the authoritative ComfyUI interaction amendment.
+- **NOD-011 P0:** Every editable node widget declares one typed optional parameter
+  input socket. A valid incoming edge drives the effective runtime value and
+  disables manual editing without overwriting the authored fallback value.
+- **NOD-012 P0:** Disconnecting a parameter edge restores the exact manual
+  fallback. Connection/disconnection, undo/redo, save/reload, validation, and
+  cache identity preserve both fallback and driven-value semantics.
+- **NOD-013 P0:** Dragging a connected input detaches/reconnects it; releasing an
+  output connection on empty canvas opens a compatible-node chooser at the
+  release point. Incompatible types cannot commit.
+- **NOD-014 P0:** Socket circles and their minimum 24 px pointer targets must
+  straddle the node boundary without being clipped by node overflow, previews,
+  resize controls, selection paint, or compact/detail modes.
+- **NOD-015 P0:** A title drag must repaint the node continuously under the
+  pointer. Only pointer release commits the authored position, revision, autosave,
+  and one undo entry; cancel restores the starting position.
 
 ### 7.4A Workflow execution and queue
 
@@ -288,6 +317,16 @@ complete snapshot or the next complete snapshot, never a mixed project.
 - **IMG-004 P0:** Missing alpha means alpha mask value 1 and is disclosed in the UI.
 - **IMG-005 P1:** User may override input profile interpretation among embedded,
   sRGB, linear-sRGB, and ignore-profile modes; override is serialized.
+- **IMG-006 P0:** Load Image exposes a node-local Browse/Replace command and accepts
+  supported image files dropped directly on the node. Both use the same bounded
+  signature validation, asset persistence, authored parameter update, and error
+  reporting as toolbar import.
+- **IMG-007 P0:** Pasting a clipboard image while the graph is active creates a
+  Load Image node at visible framing center; pasting while one Load Image node is
+  selected replaces that node. Non-image clipboard content creates no mutation.
+- **IMG-008 P0:** Load Image reserves a stable in-node source preview and shows the
+  actual decoded source thumbnail, filename, dimensions, and interpretation. Its
+  empty/loading/error/result states do not move sockets or neighboring nodes.
 
 ### 7.6 Material node
 

@@ -1,5 +1,7 @@
 export type NodeWidgetKind =
-  'readonly' | 'number' | 'select' | 'checkbox' | 'color'
+  'readonly' | 'number' | 'text' | 'select' | 'checkbox' | 'color'
+export type NodeWidgetInputType =
+  'integer' | 'float' | 'string' | 'boolean' | 'color'
 
 export interface NodeWidgetOption {
   value: string
@@ -18,6 +20,7 @@ export interface NodeWidgetDefinition {
   options?: readonly NodeWidgetOption[]
   compact: boolean
   inspector: boolean
+  inputType?: NodeWidgetInputType
   visibleWhen?: { key: string; equals: unknown }
 }
 
@@ -32,6 +35,67 @@ const MASK_OPTIONS: readonly NodeWidgetOption[] = [
 export const NODE_WIDGET_SCHEMAS: Readonly<
   Record<string, readonly NodeWidgetDefinition[]>
 > = {
+  'integer-value': [
+    {
+      key: 'value',
+      label: 'Value',
+      kind: 'number',
+      defaultValue: 0,
+      minimum: -2147483648,
+      maximum: 2147483647,
+      step: 1,
+      compact: true,
+      inspector: true,
+      inputType: 'integer',
+    },
+  ],
+  'number-value': [
+    {
+      key: 'value',
+      label: 'Value',
+      kind: 'number',
+      defaultValue: 0,
+      minimum: -1000000,
+      maximum: 1000000,
+      step: 0.01,
+      compact: true,
+      inspector: true,
+      inputType: 'float',
+    },
+  ],
+  'text-value': [
+    {
+      key: 'value',
+      label: 'Value',
+      kind: 'text',
+      defaultValue: '',
+      compact: true,
+      inspector: true,
+      inputType: 'string',
+    },
+  ],
+  'boolean-value': [
+    {
+      key: 'value',
+      label: 'Value',
+      kind: 'checkbox',
+      defaultValue: false,
+      compact: true,
+      inspector: true,
+      inputType: 'boolean',
+    },
+  ],
+  'color-value': [
+    {
+      key: 'value',
+      label: 'Value',
+      kind: 'color',
+      defaultValue: '#ffffff',
+      compact: true,
+      inspector: true,
+      inputType: 'color',
+    },
+  ],
   'load-image': [
     {
       key: 'fileName',
@@ -52,6 +116,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       ],
       compact: true,
       inspector: true,
+      inputType: 'string',
     },
     {
       key: 'maskSource',
@@ -61,6 +126,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       options: MASK_OPTIONS,
       compact: true,
       inspector: true,
+      inputType: 'string',
       visibleWhen: { key: 'mode', equals: 'mask' },
     },
     {
@@ -70,6 +136,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       defaultValue: false,
       compact: true,
       inspector: true,
+      inputType: 'boolean',
       visibleWhen: { key: 'mode', equals: 'mask' },
     },
   ],
@@ -85,6 +152,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       step: 1,
       compact: true,
       inspector: true,
+      inputType: 'integer',
     },
     {
       key: 'height',
@@ -97,6 +165,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       step: 1,
       compact: true,
       inspector: true,
+      inputType: 'integer',
     },
     {
       key: 'aspectLocked',
@@ -105,6 +174,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       defaultValue: true,
       compact: true,
       inspector: true,
+      inputType: 'boolean',
     },
     {
       key: 'preset',
@@ -120,6 +190,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       ],
       compact: true,
       inspector: true,
+      inputType: 'string',
     },
     {
       key: 'resolvedKernel',
@@ -141,6 +212,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       ].map((value) => ({ value, label: value })),
       compact: true,
       inspector: true,
+      inputType: 'string',
     },
   ],
   'brightness-correction': [
@@ -161,6 +233,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       step: Number(step),
       compact: true,
       inspector: true,
+      inputType: 'float' as const,
     })),
   ],
   'color-correction': [
@@ -181,6 +254,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       step: Number(step),
       compact: true,
       inspector: true,
+      inputType: 'float' as const,
     })),
     {
       key: 'tintHex',
@@ -189,6 +263,7 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
       defaultValue: '#ffffff',
       compact: true,
       inspector: true,
+      inputType: 'color',
     },
   ],
   preview: [],
@@ -196,6 +271,19 @@ export const NODE_WIDGET_SCHEMAS: Readonly<
 
 export function getNodeWidgetSchema(type: string) {
   return NODE_WIDGET_SCHEMAS[type] ?? []
+}
+
+export function getNodeWidgetInputSchema(type: string) {
+  return getNodeWidgetSchema(type).filter(
+    (
+      field,
+    ): field is NodeWidgetDefinition & { inputType: NodeWidgetInputType } =>
+      field.inputType !== undefined,
+  )
+}
+
+export function parameterPortId(key: string) {
+  return `parameter:${key}`
 }
 
 export function getDefaultNodeParameters(

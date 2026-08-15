@@ -34,6 +34,7 @@ intent. Derived documents resolve ambiguities without changing that reference.
 | 8 | `08-implementation-plan.md` | Dependency-ordered vertical milestones and objective exit evidence | Ready to execute |
 | 9 | `09-traceability-decisions-risks.md` | Seed coverage, decisions, risks, open questions, audit | Current |
 | 10 | `10-node-first-workbench-update.md` | User-directed ComfyUI-informed node-local controls, previews, run/queue amendment | Active; R1 required before M5 resumes |
+| 11 | `11-comfyui-node-interaction-update.md` | Authoritative ComfyUI node chrome, connection gestures, and externally driven widget amendment | Active; R1.7-R1.10 required |
 
 The repository-root `agent-graph-loop.md` governs execution: outcomes and
 definitions of done control nested loops; failed evaluations reopen the smallest
