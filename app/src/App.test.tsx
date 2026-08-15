@@ -1,7 +1,17 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import axe from 'axe-core'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import App from './App'
+import { graphStore } from './app/graphState'
+
+beforeEach(() => {
+  graphStore.setState({
+    document: { nodes: [], edges: [] },
+    selectedNodeIds: [],
+    undoStack: [],
+    redoStack: [],
+  })
+})
 
 describe('workspace shell', () => {
   it('renders the named application regions', () => {
@@ -45,6 +55,16 @@ describe('workspace shell', () => {
     appBar.focus()
     fireEvent.keyDown(appBar, { key: 'F6' })
     expect(library).toHaveFocus()
+  })
+
+  it('adds a catalog node through the inspector command', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'Load image' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to canvas' }))
+
+    expect(screen.getByLabelText('Load image node')).toBeInTheDocument()
+    expect(screen.getByText('1 nodes')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
   })
 
   it('has no automated accessibility violations in the empty shell', async () => {

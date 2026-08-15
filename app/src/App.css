@@ -478,6 +478,111 @@
   line-height: 1.5;
 }
 
+.primary-command {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 32px;
+  margin: 14px 0 2px;
+  padding: 5px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: white;
+  background: var(--accent);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.primary-command:hover {
+  filter: brightness(0.94);
+}
+
+.primary-command:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.workflow-node {
+  min-height: 128px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  box-shadow: 0 5px 18px rgb(15 23 42 / 10%);
+}
+
+.workflow-node.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.workflow-node-header {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.workflow-node-mark {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+}
+
+.workflow-node-state {
+  color: var(--text-2);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.workflow-node > p {
+  min-height: 34px;
+  margin: 0;
+  padding: 9px 12px;
+  color: var(--text-2);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.workflow-node-ports {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.workflow-node-port-list {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.workflow-node-port-list.outputs {
+  justify-items: end;
+  text-align: right;
+}
+
+.workflow-node-port {
+  color: var(--text-2);
+  font-size: 9px;
+}
+
+.workflow-node .react-flow__handle {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--surface-1);
+  background: var(--accent);
+}
+
 .inspector-section {
   padding-top: 14px;
   border-top: 1px solid var(--border);

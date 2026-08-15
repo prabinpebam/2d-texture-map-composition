@@ -213,3 +213,49 @@ test('user can inspect runtime diagnostics and return to the workspace', async (
   await expect(dialog).toBeHidden()
   await expect(runtimeButton).toBeFocused()
 })
+
+test('user can add delete and restore a graph node', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/')
+
+  await page.getByRole('button', { name: 'Load image' }).click()
+  await page.getByRole('button', { name: 'Add to canvas' }).click()
+
+  const node = page.getByLabel('Load image node')
+  await expect(node).toBeVisible()
+  await expect(page.getByText('1 nodes')).toBeVisible()
+  await expect(page.getByText('No nodes')).toBeHidden()
+  const nodeBounds = await node.boundingBox()
+  const graphBounds = await page
+    .getByRole('main', { name: 'Graph canvas' })
+    .boundingBox()
+  expect(nodeBounds).not.toBeNull()
+  expect(graphBounds).not.toBeNull()
+  expect(nodeBounds!.x).toBeGreaterThanOrEqual(graphBounds!.x)
+  expect(nodeBounds!.y).toBeGreaterThanOrEqual(graphBounds!.y)
+  expect(
+    await node.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      const hit = document.elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2,
+      )
+      return hit === element || element.contains(hit)
+    }),
+  ).toBe(true)
+
+  const screenshotPath = testInfo.outputPath('m2-add-node.png')
+  await page.screenshot({ fullPage: true, path: screenshotPath })
+  await testInfo.attach('m2-add-node', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+
+  await page.getByRole('button', { name: 'Delete selected nodes' }).click()
+  await expect(node).toBeHidden()
+  await expect(page.getByText('0 nodes')).toBeVisible()
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(page.getByLabel('Load image node')).toBeVisible()
+  await expect(page.getByText('1 nodes')).toBeVisible()
+})

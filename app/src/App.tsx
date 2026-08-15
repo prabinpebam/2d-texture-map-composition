@@ -16,12 +16,14 @@ import {
   Moon,
   Palette,
   PanelRight,
+  Plus,
   Redo2,
   Search,
   Settings,
   SlidersHorizontal,
   Sun,
   SunMedium,
+  Trash2,
   Undo2,
   Upload,
   X,
@@ -37,6 +39,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import './App.css'
 import { IconButton } from './components/IconButton'
+import { WorkflowNode, type WorkflowFlowNode } from './components/WorkflowNode'
 import { detectEnvironment } from './app/environment'
 import {
   NODE_CATALOG,
@@ -53,6 +56,8 @@ import {
   runPersistenceProbe,
   type PersistenceProbeResult,
 } from './app/storageReadiness'
+import { useGraphStore } from './app/graphState'
+import { NODE_TYPE_REGISTRY } from './domain/graph'
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
   input: 'Inputs',
@@ -76,6 +81,8 @@ const THEME_ICONS = {
   dark: Moon,
 } satisfies Record<ThemePreference, typeof Sun>
 
+const NODE_TYPES = { workflow: WorkflowNode }
+
 function App() {
   const [theme, setTheme] = useState<ThemePreference>('system')
   const [selectedTemplate, setSelectedTemplate] =
@@ -88,6 +95,16 @@ function App() {
     PersistenceProbeResult | { error: string } | 'checking' | 'unavailable'
   >(() => (capabilities.indexedDb ? 'checking' : 'unavailable'))
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  const graphDocument = useGraphStore((state) => state.document)
+  const selectedNodeIds = useGraphStore((state) => state.selectedNodeIds)
+  const undoStack = useGraphStore((state) => state.undoStack)
+  const redoStack = useGraphStore((state) => state.redoStack)
+  const addNode = useGraphStore((state) => state.addNode)
+  const selectNode = useGraphStore((state) => state.selectNode)
+  const clearSelection = useGraphStore((state) => state.clearSelection)
+  const deleteSelected = useGraphStore((state) => state.deleteSelected)
+  const undo = useGraphStore((state) => state.undo)
+  const redo = useGraphStore((state) => state.redo)
 
   const appBarRef = useRef<HTMLElement>(null)
   const libraryRef = useRef<HTMLElement>(null)
@@ -99,6 +116,27 @@ function App() {
 
   const ThemeIcon = THEME_ICONS[theme]
   const nextThemeValue = nextTheme(theme)
+  const flowNodes: WorkflowFlowNode[] = graphDocument.nodes.map((node) => {
+    const definition = NODE_TYPE_REGISTRY[node.type]
+    return {
+      id: node.id,
+      type: 'workflow',
+      position: node.position,
+      selected: selectedNodeIds.includes(node.id),
+      draggable: !node.locked,
+      ariaLabel: `${node.label} node`,
+      data: {
+        label: node.label,
+        summary: definition.summary,
+        inputs: definition.inputs,
+        outputs: definition.outputs,
+      },
+      style: { width: node.size.width, minHeight: node.size.height },
+    }
+  })
+  const selectedNode = graphDocument.nodes.find((node) =>
+    selectedNodeIds.includes(node.id),
+  )
 
   useEffect(() => {
     function handleRegionNavigation(event: globalThis.KeyboardEvent) {
@@ -213,10 +251,18 @@ function App() {
           role="toolbar"
           aria-label="Project commands"
         >
-          <IconButton disabled label="Undo">
+          <IconButton
+            disabled={undoStack.length === 0}
+            label="Undo"
+            onClick={undo}
+          >
             <Undo2 aria-hidden="true" size={17} />
           </IconButton>
-          <IconButton disabled label="Redo">
+          <IconButton
+            disabled={redoStack.length === 0}
+            label="Redo"
+            onClick={redo}
+          >
             <Redo2 aria-hidden="true" size={17} />
           </IconButton>
           <span className="toolbar-separator" aria-hidden="true" />
@@ -225,6 +271,13 @@ function App() {
           </IconButton>
           <IconButton disabled label="Export workflow">
             <Download aria-hidden="true" size={17} />
+          </IconButton>
+          <IconButton
+            disabled={selectedNodeIds.length === 0}
+            label="Delete selected nodes"
+            onClick={deleteSelected}
+          >
+            <Trash2 aria-hidden="true" size={17} />
           </IconButton>
           <span className="toolbar-separator" aria-hidden="true" />
           <IconButton
@@ -307,9 +360,13 @@ function App() {
             colorMode={theme}
             edges={[]}
             fitView
+            fitViewOptions={{ maxZoom: 1 }}
             maxZoom={2.5}
             minZoom={0.2}
-            nodes={[]}
+            nodeTypes={NODE_TYPES}
+            nodes={flowNodes}
+            onNodeClick={(event, node) => selectNode(node.id, event.shiftKey)}
+            onPaneClick={clearSelection}
           >
             <Background
               color="var(--graph-dot)"
@@ -330,15 +387,17 @@ function App() {
               <span aria-hidden="true">/</span>
               <strong>Untitled workflow</strong>
             </Panel>
-            <Panel className="empty-workflow" position="top-center">
-              <span className="empty-icon" aria-hidden="true">
-                <BoxSelect size={21} />
-              </span>
-              <div>
-                <strong>No nodes</strong>
-                <span>Select a node template from the library.</span>
-              </div>
-            </Panel>
+            {graphDocument.nodes.length === 0 ? (
+              <Panel className="empty-workflow" position="top-center">
+                <span className="empty-icon" aria-hidden="true">
+                  <BoxSelect size={21} />
+                </span>
+                <div>
+                  <strong>No nodes</strong>
+                  <span>Select a node template from the library.</span>
+                </div>
+              </Panel>
+            ) : null}
           </ReactFlow>
         </main>
 
@@ -378,11 +437,30 @@ function App() {
               </div>
               <p className="template-summary">{selectedTemplate.summary}</p>
 
+              <button
+                className="primary-command"
+                onClick={() => {
+                  const nodeCount = graphDocument.nodes.length
+                  addNode(selectedTemplate.id, {
+                    x: 100 + (nodeCount % 3) * 280,
+                    y: 100 + Math.floor(nodeCount / 3) * 180,
+                  })
+                }}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={15} />
+                Add to canvas
+              </button>
+
               <section className="inspector-section">
                 <h3>State</h3>
                 <div className="state-row">
                   <LockKeyhole aria-hidden="true" size={15} />
-                  <span>Ready to add in graph authoring</span>
+                  <span>
+                    {selectedNode?.type === selectedTemplate.id
+                      ? 'Selected on canvas'
+                      : 'Ready to add'}
+                  </span>
                 </div>
               </section>
             </div>
@@ -438,7 +516,8 @@ function App() {
         </div>
         <div className="status-group">
           <span className="status-item">
-            <Map aria-hidden="true" size={13} />0 nodes
+            <Map aria-hidden="true" size={13} />
+            {graphDocument.nodes.length} nodes
           </span>
           <button
             aria-expanded={diagnosticsOpen}
