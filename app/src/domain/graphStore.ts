@@ -30,6 +30,7 @@ export interface GraphStoreState {
     id?: string,
   ): ConnectionDiagnostic | null
   replaceDocument(document: GraphDocument): void
+  hydrateDocument(document: GraphDocument): void
   deleteSelected(): void
   undo(): void
   redo(): void
@@ -297,6 +298,15 @@ export function createGraphStore() {
         selectedNodeIds: [],
         connectionDiagnostic: null,
         undoStack: [...state.undoStack, state.document],
+        redoStack: [],
+      })
+    },
+    hydrateDocument(document) {
+      set({
+        document,
+        selectedNodeIds: [],
+        connectionDiagnostic: null,
+        undoStack: [],
         redoStack: [],
       })
     },

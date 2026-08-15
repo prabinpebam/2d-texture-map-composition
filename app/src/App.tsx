@@ -66,6 +66,7 @@ import {
 import { useGraphStore } from './app/graphState'
 import { NODE_TYPE_REGISTRY } from './domain/graph'
 import { serializeGraphWorkflow } from './app/graphWorkflowExport'
+import { useProjectPersistence } from './app/projectPersistence'
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
   input: 'Inputs',
@@ -135,8 +136,13 @@ function App() {
   )
   const connectNodes = useGraphStore((state) => state.connectNodes)
   const replaceDocument = useGraphStore((state) => state.replaceDocument)
+  const hydrateDocument = useGraphStore((state) => state.hydrateDocument)
   const undo = useGraphStore((state) => state.undo)
   const redo = useGraphStore((state) => state.redo)
+  const projectSaveStatus = useProjectPersistence(
+    graphDocument,
+    hydrateDocument,
+  )
 
   const appBarRef = useRef<HTMLElement>(null)
   const libraryRef = useRef<HTMLElement>(null)
@@ -490,7 +496,15 @@ function App() {
 
         <div className="save-state" role="status">
           <span className="status-dot" aria-hidden="true" />
-          Local draft
+          {projectSaveStatus === 'loading'
+            ? 'Opening local project'
+            : projectSaveStatus === 'saving'
+              ? 'Saving locally'
+              : projectSaveStatus === 'saved'
+                ? 'Saved locally'
+                : projectSaveStatus === 'recovered'
+                  ? 'Recovered prior snapshot'
+                  : 'Unsaved changes'}
         </div>
 
         <div

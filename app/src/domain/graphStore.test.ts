@@ -197,4 +197,16 @@ describe('graph command store', () => {
     store.getState().undo()
     expect(store.getState().document).toEqual({ nodes: [], edges: [] })
   })
+
+  it('hydrates a saved document without adding authored history', () => {
+    const store = createGraphStore()
+    const saved = {
+      nodes: [createGraphNode('light', 'saved', { x: 12, y: 18 }, 0)],
+      edges: [],
+    }
+    store.getState().hydrateDocument(saved)
+    expect(store.getState().document).toBe(saved)
+    expect(store.getState().undoStack).toEqual([])
+    expect(store.getState().redoStack).toEqual([])
+  })
 })
