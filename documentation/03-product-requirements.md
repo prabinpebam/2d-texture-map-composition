@@ -61,6 +61,10 @@ and P2 is deferred enhancement.
 
 - **Visible dataflow:** output changes are explained by explicit nodes and edges;
   no hidden graph-wide image source affects evaluation.
+- **Node-first operation:** ordinary controls and results live in their owning
+  nodes; the inspector is optional for the principal composition workflow.
+- **Explicit execution:** authored edits and draft feedback are distinct from a
+  captured workflow run, queue record, or completed current result.
 - **Forgiving input, explicit interpretation:** arbitrary images are accepted
   within safety limits, while interpretation and uncertainty are visible.
 - **Fast interaction, independent processing:** graph editing never waits for
@@ -88,6 +92,10 @@ and P2 is deferred enhancement.
 | Lock | Node cannot be moved, resized, deleted, reconnected, or edited until unlocked; evaluation is unchanged. |
 | Invalid | Node cannot evaluate because a required input, parameter, asset, or type contract is missing or incompatible. |
 | Stale | A prior preview is visible while a newer generation is queued or computing. |
+| Dirty | Authored state differs from the latest completed run for that node or branch. |
+| Run | Immutable execution request capturing project revision, demanded output nodes, and settings. |
+| Queue | Ordered pending/running/recent run records; queue state is ephemeral, not authored workflow state. |
+| Cached | Node output was reused because its complete execution identity matched. |
 
 Bypass, mute, lock, selection, focus, error, computing, and stale are independent
 state axes. Shortcuts never fire while a text field, numeric field, or editable
@@ -101,9 +109,12 @@ color value consumes the keystroke.
 2. User imports one or more supported image files.
 3. Each file creates a Load Image node positioned without overlap.
 4. User adds processing/material/preview nodes and connects compatible ports.
-5. Editing a parameter produces a responsive preview and marks downstream nodes
-   stale until the newest generation completes.
-6. The project autosaves and reports durability state.
+5. User edits ordinary parameters directly inside nodes; a bounded draft may
+  update while affected downstream nodes become dirty/stale.
+6. User runs the workflow or runs a selected output branch. Nodes display queued,
+  running, cached, succeeded, or error state and output nodes show results in-node.
+7. The project autosaves authored state independently of run completion and
+  reports durability state.
 
 **Acceptance:** closing and reopening restores nodes, edges, values, dimensions,
 positions, z-order, viewport, theme, and assets; equivalent output recomputes.
@@ -162,7 +173,8 @@ complete snapshot or the next complete snapshot, never a mixed project.
 - **PRJ-002 P0:** Project list must show name, modified time, thumbnail when
   available, asset/storage estimate, and durability warning.
 - **PRJ-003 P0:** The workspace must contain node library, graph canvas, inspector,
-  preview surface, toolbar, minimap, and status/progress regions.
+  node-local preview surfaces, run/queue controls, queue/history panel, toolbar,
+  minimap, and status/progress regions. The inspector is a secondary detail panel.
 - **PRJ-004 P0:** Light, dark, and system themes must be available and persisted as
   user preference without changing workflow output.
 - **PRJ-005 P0:** Undo and redo must cover graph and parameter authoring commands.
@@ -219,10 +231,13 @@ complete snapshot or the next complete snapshot, never a mixed project.
 - **NOD-001 P0:** Every node must display name, type icon, preview/status, typed
   ports, bypass/mute/lock state, error summary, and processing progress where
   applicable.
-- **NOD-002 P0:** Inspector must expose all parameters with unit, valid range,
-  default, reset, and accessible name. Invalid manual entry does not commit.
+- **NOD-002 P0:** Every ordinary P0 parameter must be operable directly inside its
+  node with unit, valid range, current value, default/reset, and accessible name.
+  The inspector mirrors the same schema and adds advanced/detail views; it cannot
+  define different fields, defaults, validation, or serialization.
 - **NOD-003 P0:** Parameter editing must support pointer, keyboard, and direct
-  numeric/text entry where meaningful.
+  numeric/text entry where meaningful. Node widgets must not drag or pan the node
+  while being operated and continuous edits coalesce into one undo command.
 - **NOD-004 P0:** A node must reject stale worker output whose project, node,
   revision, or generation no longer matches current state.
 - **NOD-005 P0:** Bypass designates a typed pass-through input per node contract.
@@ -230,6 +245,39 @@ complete snapshot or the next complete snapshot, never a mixed project.
   why.
 - **NOD-006 P0:** Errors propagate as typed absent results with provenance; one
   failing branch must not stop unrelated previews.
+- **NOD-007 P0:** Image-producing and analysis/output nodes must render their
+  current result directly in the node. Loading, stale, running, cached, canceled,
+  error, empty, and OOM states retain stable node geometry.
+- **NOD-008 P0:** Nodes support collapse/expand and zoom-level detail reduction.
+  Compact state preserves title, typed ports, execution state, and result
+  availability without altering authored values.
+- **NOD-009 P0:** Selected nodes expose nearby management for context-appropriate
+  Run partial, bypass, mute, lock, duplicate, and delete; the context menu remains
+  the complete equivalent command surface.
+
+### 7.4A Workflow execution and queue
+
+- **EXE-001 P0:** Run workflow is a visible top-level command with reliable
+  `Ctrl+Enter` access. It validates and captures one immutable project revision
+  and enqueues the demanded output set.
+- **EXE-002 P0:** Run selected output is available only for output-capable nodes
+  and evaluates exactly the required upstream subgraph for those outputs.
+- **EXE-003 P0:** Interrupt cancels queued/running generations, releases
+  reservations, and retains the newest prior valid result. Canceled work cannot
+  publish current output.
+- **EXE-004 P0:** Queue/history records expose run ID, captured revision, targets,
+  queued/running/succeeded/failed/canceled state, timestamps, progress,
+  diagnostics, and result references. Queue/history is not workflow JSON.
+- **EXE-005 P0:** Nodes visibly distinguish dirty, queued, running, cached/skipped,
+  succeeded, stale-result, error, and canceled state without relying on color.
+- **EXE-006 P0:** A completion whose project revision, run ID, node generation, or
+  request token is stale cannot replace current node output.
+- **EXE-007 P0:** Identical clean nodes reuse cache during a run and report cached
+  state; authored parameter/edge/asset changes invalidate only affected downstream
+  identities.
+- **EXE-008 P0:** Autosave and draft preview never create a completed run record or
+  relabel stale results as current. Run completion never relabels unsaved authored
+  edits as saved.
 
 ### 7.5 Load Image node
 

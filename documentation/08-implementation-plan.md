@@ -18,6 +18,10 @@ not time boxes. A milestone closes only with its objective evidence.
   workloads and never replace the oracle with the optimization.
 - Keep image compute, storage, and graph rendering separate from the first slice.
 - Add each named algorithm with discriminating fixtures, not a shared placeholder.
+- Treat nodes as the primary operational surface: common widgets and output
+  previews live in nodes; inspector fields are schema-driven mirrors/details.
+- Separate authored edits/drafts from explicit workflow runs, partial runs, queue
+  records, and current completed results.
 - Schema and algorithm versioning begin with the first saved fixture, not at release.
 - Reopen the smallest milestone/work package that fails a higher-level gate.
 - Do not close or commit an implementation milestone until Playwright opens the
@@ -66,8 +70,9 @@ flowchart TD
     M1 --> M3[Local project persistence]
     M2 --> M4[Load, mask, preview pipeline]
     M3 --> M4
-    M4 --> M5[Resize and corrections]
-    M4 --> M6[Blend and merge]
+    M4 --> R1[Node-first workbench alignment]
+    R1 --> M5[Resize and corrections]
+    R1 --> M6[Blend and merge]
     M5 --> M7[Relief, material, lights]
     M6 --> M7
     M4 --> M8[Color analysis and picker]
@@ -218,10 +223,56 @@ preview, and see deterministic off-main-thread pixels.
 - Stale result race and cancellation tests publish only newest generation.
 - UI remains within graph/input budgets during standard preview evaluation.
 
+### R1: Node-first workbench alignment
+
+**Outcome:** The graph becomes a ComfyUI-informed operational workbench: common
+controls and results live in nodes, inspector is secondary, and workflow/branch
+execution is explicit, queued, observable, cancelable, and stale-safe.
+
+This milestone is a material amendment dated 2026-08-15. M2 graph-domain and M4
+processing evidence remain closed; only their presentation/execution layers
+reopen. M5 numerical and worker work may continue in isolation, but M5 user-facing
+closure is blocked until R1 passes.
+
+**Work packages**
+
+- R1.1 Define versioned node widget schemas and shared node/inspector renderers;
+  migrate Load Image, Resize, Color Correction, Brightness, and Preview common
+  fields into nodes without duplicate defaults or validation.
+- R1.2 Add node-local source thumbnails/results, stable empty/loading/stale/
+  running/cached/error/OOM geometry, collapse/expand, zoom-level detail policy,
+  no-drag widget behavior, and selected-node toolbox.
+- R1.3 Implement Run workflow, Run selected output, Interrupt, immutable run
+  snapshots, ordered queue/history, node execution events/progress, demanded
+  subgraphs, cache-hit/skipped states, and stale completion rejection.
+- R1.4 Keep inspector as optional advanced/detail/multi-edit surface and prove
+  field parity, focus restoration, undo coalescing, and serialization parity.
+- R1.5 Re-run accessibility and performance with DOM widgets and bitmaps inside
+  nodes at realistic 25-node and stress 100/300-node tiers.
+
+**Exit evidence**
+
+- With inspector closed, pointer and keyboard users import, add/configure nodes,
+  connect, run, inspect in-node pixels, correct an error, and save.
+- Full run and selected-output run produce objective demanded-node event sets,
+  queue records, visible node states, and correct result ownership.
+- Interrupt and stale-run races cannot publish canceled/older output; cache reuse
+  reports cached without kernel execution.
+- Node widget interactions are hit-testable and do not move/pan nodes. Loading,
+  result, cached, and error states preserve node/port geometry.
+- Node and inspector hosts write the same authored keys/defaults/validation and
+  one undo transaction; workflow round-trip is unchanged.
+- Actual Edge Playwright evidence retains screenshots, node rectangles, pixel
+  samples, queue capture, focus log, and accessibility output.
+
 ### M5: Resize and correction nodes
 
 **Outcome:** Users can perform all versioned resize methods and color/brightness
 corrections with identity-safe defaults and backend parity.
+
+**Current status:** Scalar references and initial transform-worker evidence exist;
+user-facing controls implemented only in the inspector are provisional and must
+move to shared node widgets through R1 before this milestone can close.
 
 **Work packages**
 
@@ -230,8 +281,9 @@ corrections with identity-safe defaults and backend parity.
 - M5.2 Implement Color Correction ordered pipeline and common mask mixing.
 - M5.3 Implement Brightness Correction formula and tonal-weight visualization in
   tests/diagnostics, not as a user-facing image unless designed.
-- M5.4 Add tile halos, cache keys, inspector controls, progress, cancellation, and
-  performance optimizations for these nodes.
+- M5.4 Add tile halos, cache keys, schema-driven node controls with inspector
+  mirrors, node-local draft/result state, explicit run progress, cancellation,
+  and performance optimizations for these nodes.
 
 **Exit evidence**
 
@@ -240,6 +292,8 @@ corrections with identity-safe defaults and backend parity.
 - Neutral controls are identity; alpha is unchanged.
 - WASM and accepted GPU implementations match scalar tolerances.
 - Repeated standard slider workflow meets preview and memory budgets.
+- Principal resize/correction workflow runs with inspector closed and displays the
+  output in its Preview node; explicit Run/partial-run records the correct branch.
 
 ### M6: Blend and merge
 
@@ -252,7 +306,8 @@ catalogs, explicit ordering, opacity/mask, dimensions, and correct alpha.
   standard modes.
 - M6.2 Implement creative extension catalog one formula at a time.
 - M6.3 Implement Merge ports, foreground/background labels, Swap Layers, opacity,
-  mask, center/max canvas, bypass/mute, preview, and serialization.
+  mask, center/max canvas, bypass/mute, node-local controls/result preview, and
+  serialization.
 - M6.4 Add layer/dimension/transparent-edge UX and full fixture matrix.
 
 **Exit evidence**
@@ -274,7 +329,7 @@ multiple parallel lights produce the specified 2D shaded material/merge output.
 - M7.2 Implement luminance/channel height, invert, central gradient, strength,
   type-aware resizing, and arbitrary-image warning.
 - M7.3 Implement Light value/node, direction control/numeric input, tint/mix,
-  intensity, mute, and deterministic variadic ordering.
+  intensity, mute, node-local widgets, and deterministic variadic ordering.
 - M7.4 Implement Material base color/image, opacity, one relief source, implicit
   default light/materialization, explicit-light/all-muted rules, and shading.
 - M7.5 Implement Merge relief modifier using the same canonical converters/shader.
@@ -301,6 +356,8 @@ representative color with a target.
   shortest signed deltas, CIEDE2000, transparent absence, and target compare.
 - M8.4 Use the picker in Material, Light, Color Correction, target, JPEG background,
   and all future color fields; prohibit duplicate picker implementations.
+- M8.5 Render ordinary picker hosts in nodes first and mirror the same component in
+  inspector/details; analysis swatches and comparison results render in-node.
 
 **Exit evidence**
 
@@ -318,6 +375,8 @@ restore valid workflow metadata from PNG without risking pixel import.
 
 - M9.1 Implement full-resolution export coordinator, memory preflight, progress,
   cancellation, temporary artifact lifecycle, and deterministic quantization.
+- M9.1A Integrate export as an explicit run target with queue/history and node-local
+  progress/result state; draft preview completion never counts as export run.
 - M9.2 Implement PNG/JPEG adapters, alpha/background/profile/quality policies,
   EXIF stripping, and independent decode tests.
 - M9.3 Integrate selected TIFF adapter and only expose capabilities proven by
@@ -373,6 +432,8 @@ After M1 closes:
   fixture, and design-system review checkpoints.
 - M7 depends on resize semantics and benefits from blend completion; M9 integrates
   all processing outputs and cannot close early.
+- No downstream user-facing node milestone can close before R1. Mathematical,
+  codec, or worker tasks may proceed in isolation but retain provisional UX status.
 
 Integration occurs continuously through vertical fixtures. No branch may defer
 schema, worker, accessibility, or tests to a final merge phase.

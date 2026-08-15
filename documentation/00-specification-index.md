@@ -2,14 +2,18 @@
 
 ## Status
 
-The detailing phase and implementation milestones M0-M4 are complete. The
+The detailing phase and implementation milestones M0-M4 have validated backend
+and workflow evidence. A user-directed node-first workbench amendment dated
+2026-08-15 reopens the affected M2/M4 presentation and execution UX through R1;
+their domain, persistence, and processing evidence remains retained. The
 repository now contains a validated workspace foundation, scalar processing
 oracle, Rust/WASM worker prototype, bounded tile and PNG-envelope adapters,
 transactional worker-owned local persistence, typed accessible graph authoring,
 graph workflow v1, bounded image import and mask preview, architecture decisions,
 and mandatory Playwright UX evaluation against the actual app in Microsoft Edge.
-Product feature milestones M5-M10 remain
-to be implemented. Failed M1 capability spikes remain intentionally hidden or
+M5 numerical/worker work is paused pending R1 node-local controls, previews, and
+explicit workflow execution. Product feature milestones M5-M10 remain to be
+implemented. Failed M1 capability spikes remain intentionally hidden or
 bounded rather than treated as completed product work.
 
 The human-authored `seed-spec.md` is immutable and remains the source of product
@@ -29,6 +33,7 @@ intent. Derived documents resolve ambiguities without changing that reference.
 | 7 | `07-quality-evaluation.md` | Fixtures, oracles, E2E, performance, security, release gates | Closed |
 | 8 | `08-implementation-plan.md` | Dependency-ordered vertical milestones and objective exit evidence | Ready to execute |
 | 9 | `09-traceability-decisions-risks.md` | Seed coverage, decisions, risks, open questions, audit | Current |
+| 10 | `10-node-first-workbench-update.md` | User-directed ComfyUI-informed node-local controls, previews, run/queue amendment | Active; R1 required before M5 resumes |
 
 The repository-root `agent-graph-loop.md` governs execution: outcomes and
 definitions of done control nested loops; failed evaluations reopen the smallest
@@ -50,7 +55,9 @@ honor these M1 results:
 - Exact HSL picker visual parity remains blocked until the approved design source
   is supplied or behavior-only visuals are explicitly accepted before M8.2.
 
-These constraints do not block M5 resize and correction work.
+These constraints do not block R1 node-first workbench alignment. M5 UI closure
+is blocked until R1 passes; completed scalar and worker transform evidence is
+retained.
 
 ## Change Rules
 

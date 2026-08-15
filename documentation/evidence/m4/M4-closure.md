@@ -1,5 +1,10 @@
 # M4 Closure
 
+> **2026-08-15 amendment:** Import, asset, worker, mask math, cache, generation,
+> and pixel evidence remains accepted. Preview placement/execution UX is reopened
+> through R1: output pixels must render inside the Preview node and draft preview
+> must be distinct from explicit workflow runs.
+
 ## Outcome
 
 Users can safely import PNG/JPEG assets, connect Load Image to Image Preview, and

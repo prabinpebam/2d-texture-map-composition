@@ -33,6 +33,7 @@ boundary. TIFF codec selection remains gated by SPIKE-001.
 flowchart LR
     UI[React workspace] --> CMD[Command/domain store]
     UI --> RF[React Flow adapter]
+    UI --> RUN[Run and queue client]
     CMD --> SCH[Graph scheduler worker]
     CMD --> DB[Persistence worker]
     SCH --> REG[Node/kernel registry]
@@ -41,6 +42,7 @@ flowchart LR
     CPU --> CACHE[Tile cache]
     GPU --> CACHE
     SCH --> PREV[Preview bridge]
+    SCH --> QUEUE[Run queue and history]
     PREV --> UI
     DB --> IDB[(IndexedDB)]
     CMD --> CH[Multi-tab lease channel]
@@ -52,12 +54,19 @@ flowchart LR
 
 - `ui`: rendering, focus, dialogs, inspector, commands, announcements. No pixel
   loops, codec parsing, or IndexedDB calls.
+- `node-widget-schema`: one versioned definition for node-local and inspector
+  fields, compact/advanced placement, units, defaults, validation, commit policy,
+  serialization keys, and optional input conversion. React node widgets and the
+  inspector render this schema; neither defines private parameters.
+- `run-queue-client`: Run, Run selected output, Interrupt, queue/history commands,
+  and subscriptions. It does not evaluate nodes or mutate authored parameters.
 - `domain`: canonical authored state, commands, validation summaries, selection,
   and undo/redo. No React elements or browser codec APIs.
 - `react-flow-adapter`: lossless mapping between domain nodes/edges and React Flow
   view models. React Flow IDs are domain IDs.
 - `scheduler-worker`: DAG validation snapshot, dirty propagation, priorities,
-  generations, cache planning, memory reservations, and backend dispatch.
+  generations, immutable run snapshots, demanded-output planning, queue records,
+  cache planning, memory reservations, node execution events, and backend dispatch.
 - `kernel-contracts`: canonical data types, registry IDs, parameter schemas,
   tile/halo rules, and conformance fixtures.
 - `compute-cpu`: scalar oracle and WASM implementations.
@@ -84,7 +93,9 @@ settings, and explicitly named project preferences.
 
 Selection, focus, hover, open menus, current drag, worker handles, progress,
 preview bitmaps, cache entries, object URLs, error stacks, and device adapters are
-not workflow state. Viewport is persisted but not part of undo history.
+not workflow state. Run queue/history records, node running/progress state, draft
+preview handles, and current/previous result handles are also ephemeral. Viewport
+is persisted but not part of undo history.
 
 ### Command model
 
@@ -107,28 +118,48 @@ compatible, target cardinality allows it, and adding it does not create a cycle.
 Cycle detection occurs on the proposed in-memory graph before commit. Import
 validates the entire graph independently of UI checks.
 
-### Evaluation algorithm
+### Authoring, draft, and run separation
 
-1. Domain commits revision `R` and sends changed entities, not the full image data.
-2. Scheduler updates its immutable graph snapshot and increments affected node
-   generations.
-3. Dirty propagation walks only downstream dependents.
-4. Scheduler derives the required subgraph from visible previews and active
-   exports, then topologically orders missing work.
-5. For each node/tile, scheduler checks the memory cache key. Cache lookup performs
-   no storage I/O.
-6. Missing work receives a memory reservation and is dispatched by priority.
-7. Results publish only when project/revision/node generation and request token
-   still match. Otherwise buffers are released without UI publication.
+Authored graph commits update dirty identities and may request a bounded draft for
+visible node-local feedback. Draft work has no run ID and cannot produce a
+completed queue record. A workflow run begins only from Run workflow or Run
+selected output and captures one immutable project revision plus output demand.
+
+### Explicit run algorithm
+
+1. Domain commits revision `R`, updates the scheduler graph snapshot, increments
+  affected generations, and marks only downstream identities dirty.
+2. Run client sends `run-full` or `run-output` with captured revision `R`, output
+  IDs, and a request token. Scheduler creates an ordered run record and rejects
+  invalid/missing required inputs before dispatch.
+3. Scheduler derives the demanded upstream subgraph. Full run uses all active
+  output nodes; partial run uses selected output nodes only.
+4. Scheduler topologically orders demanded work and marks each node queued,
+  cached/skipped, or invalid. Cache lookup performs no storage I/O.
+5. Missing work receives reservations and dispatches by priority. Node events
+  carry run ID, project revision, node generation, phase, progress, and diagnostic.
+6. Results publish to the result registry only when run ID, project/revision, node
+  generation, and request token still match. Older completions release resources
+  and remain historical evidence only.
+7. Scheduler closes the run as succeeded, failed, or canceled and retains a
+  bounded run history. A newer authored revision makes the result visibly stale
+  but does not erase it.
 
 Priority order is direct-manipulation preview, visible settled preview, analysis
 node, explicit save thumbnail, then export. Export may reserve throughput but
 cannot starve interaction.
 
+Run queue ordering is separate from tile priority. Default Run appends; optional
+Run Next/front-of-queue is a distinct command. One active workflow run is the P0
+baseline; bounded backend tile concurrency remains adaptive inside it.
+
 ### Cancellation
 
 - New parameter commits cancel/supersede older work in the affected downstream
-  branch.
+  draft branch but do not silently cancel a captured workflow run. Its completion
+  is retained as stale historical output if the authored revision advanced.
+- Interrupt cancels the active run and optionally queued runs, transitions node/run
+  records to canceled, and prevents every outstanding token from publication.
 - Worker requests check an atomic or message-based cancellation token between
   tiles and long kernel phases.
 - Export cancellation stops scheduling, lets non-interruptible codec calls finish
@@ -191,9 +222,11 @@ WebGPU backend requirements:
 
 ## 8. Preview Pipeline
 
-Visible preview demand drives evaluation. The worker produces transferable
-`ImageBitmap` or bounded RGBA tiles. UI owns only the current and immediately
-previous bitmap for a preview; replacing one closes/releases the old object.
+Visible node-local preview demand drives draft evaluation. Explicit runs drive
+current result publication. Workers produce transferable `ImageBitmap` or bounded
+RGBA tiles. The result registry owns current and immediately previous handles per
+node; replacing one closes/releases the old object. Node-local and inspector
+previews subscribe to the same handle and metadata.
 
 While editing:
 
@@ -201,6 +234,9 @@ While editing:
 2. Cheap preview generation starts after a 50 ms coalescing window.
 3. Newer input supersedes older generations.
 4. After 250 ms idle, settled-quality preview may replace draft.
+
+Draft, queued, running, cached, succeeded, stale, canceled, and error metadata are
+orthogonal to the bitmap. Node geometry remains stable when metadata changes.
 
 These are scheduling windows, not user-visible delays or persistence timers.
 Direct graph movement does not recompute pixels because position is absent from
@@ -441,7 +477,8 @@ React Flow view rules:
 Before implementation freeze, create ADRs for canonical pixels/alpha, CPU oracle
 and WASM language, kernel registry/versioning, tile/cache strategy, TIFF codec,
 workflow asset packaging, PNG envelope, color conversion dependency, multi-tab
-lease, WebGPU enablement, and deployment isolation headers. Each ADR records
+lease, WebGPU enablement, deployment isolation headers, node widget schema,
+result-handle ownership, and explicit run queue/history. Each ADR records
 benchmarks/fixtures, rejected alternatives, fallback, and reversal cost.
 
 ## 19. Architecture Definition of Done
@@ -450,4 +487,7 @@ The architecture closes when boundary contracts compile in a spike, reference
 workloads meet budgets or produce a bounded redesign, storage crash/quota/tab
 tests preserve authored data, imported files cannot bypass budgets/schema, CPU
 and optional GPU pass processing conformance, and every high-impact dependency
-has license, maintenance, replacement, and failure evidence.
+has license, maintenance, replacement, and failure evidence. The node-first
+amendment additionally requires one shared widget schema, bounded result handles,
+and objective full/partial run demanded-subgraph evidence before downstream UX
+milestones close.

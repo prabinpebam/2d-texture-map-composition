@@ -128,6 +128,14 @@ approval; a failing test is not fixed by automatic golden replacement.
   catalog fixture, except explicitly documented mathematical equivalences.
 - CPU/WASM/GPU parity stays within contract tolerance.
 - Preview refinement and full export agree after matching extent/quantization.
+- Node-local and inspector fields bind the same authored key, validation, default,
+  reset, undo transaction, and serialized value.
+- Draft preview completion creates no workflow run record and cannot mark a stale
+  completed output current.
+- Full run demands every active output branch; partial run demands only selected
+  output ancestors. Undemanded branches produce no execution events.
+- A stale run/revision/generation/token completion cannot replace current output.
+- Identical clean identities report cached/skipped and do not execute their kernel.
 
 ### Image comparison
 
@@ -148,6 +156,14 @@ alpha defects. Diff images are evidence, not the sole detector.
 - Saturate export work, then edit a visible node; assert interaction priority is
   maintained.
 - Compare full-frame and tiled outputs at every tile boundary and kernel halo.
+- Capture full-run and selected-output demanded node sets, topological order, run
+  records, per-node events, cache decisions, and final result ownership.
+- Race authoring edits against active runs and complete the older run last; assert
+  its result remains historical/stale and current output is unchanged.
+- Interrupt between queue, reservation, tile, and publication phases; assert the
+  run closes canceled, reservations release, and no canceled result publishes.
+- Render node widget schemas in node and inspector hosts and property-check
+  identical writes/defaults/validation/reset/undo behavior.
 
 ## 7. Persistence and Interchange Tests
 
@@ -183,11 +199,22 @@ alpha defects. Diff images are evidence, not the sole detector.
 | E2E-010 | JSON export/import and PNG restoration | schema validation, graph parity, metadata failure cases |
 | E2E-011 | PNG/JPEG/TIFF export/cancel | decoded artifact properties; no partial file on cancel |
 | E2E-012 | Keyboard-only complete composition | focus log, live messages, no drag dependency |
+| E2E-013 | Node-local configure and preview without inspector | real node widget input, no-drag hit tests, in-node bitmap pixels, stable geometry |
+| E2E-014 | Run workflow and queue history | captured revision, demanded nodes, node states/progress, queue row, current result |
+| E2E-015 | Run selected output branch | selected output identity, exact upstream event set, unrelated branch inactivity |
+| E2E-016 | Interrupt and stale run race | cancel feedback, released work, prior result retention, stale completion rejection |
+| E2E-017 | Node/inspector field parity | same field edited in both hosts, one authored key, undo and serialization parity |
 
 Playwright must use real event input. DOM presence/classes alone do not prove
 visibility or usability. Overlays, menus, dialogs, ports, and previews require
 bounding/clipping/hit-test checks and screenshots; canvas/bitmap content requires
 nonblank pixel and expected-sample checks.
+
+For node-first journeys, Playwright starts with the inspector closed. Opening the
+inspector is allowed only in the explicit parity/detail journey. Evidence must
+sample the bitmap inside the output node, prove controls are hit-testable without
+moving the node, and record node rectangles before/after loading/running/error to
+prove stable geometry.
 
 ## 9. Accessibility Evaluation
 
@@ -267,6 +294,10 @@ P0 release is blocked by any of:
 - Seed traceability gap or unresolved blocking decision.
 - Missing or failing Playwright UX evidence from opening the actual app and
   completing the intended user task for a claimed implementation milestone.
+- Principal workflow requires the inspector for ordinary controls/results, or an
+  output result is unavailable inside its node.
+- Run/partial-run/interrupt/cache/stale behavior lacks objective queue and node
+  execution evidence, or a draft preview is represented as a completed run.
 
 ## 14. Quality Definition of Done
 

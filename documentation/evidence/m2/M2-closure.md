@@ -1,5 +1,11 @@
 # M2 Closure
 
+> **2026-08-15 amendment:** Graph domain, typed edges, command, workflow, and
+> accessibility evidence remains accepted. Node presentation/management UX is
+> reopened through R1 because common controls and results must move into nodes and
+> explicit run/queue behavior must be added. This document does not by itself
+> satisfy `10-node-first-workbench-update.md`.
+
 ## Outcome
 
 Users can create and edit a typed, accessible DAG independently of image

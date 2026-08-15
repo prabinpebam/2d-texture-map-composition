@@ -17,8 +17,8 @@ manipulation while waiting for full-resolution work.
 | App bar | top, 44 px | project name/save state, undo/redo, import/export, theme/settings |
 | Node library | left, 240 px resizable | search, categories, draggable/add commands |
 | Graph | center, remaining space | React Flow canvas, nodes, edges, selection, minimap |
-| Inspector | right, 300 px resizable | selected node parameters and validation |
-| Preview | right/bottom tabbed with inspector | selected/final preview and pixel data |
+| Inspector | right, 300 px resizable | optional advanced parameters, metadata, validation, docs, multi-edit |
+| Queue/history | right drawer/tab | run controls, active progress, recent runs, diagnostics, cancel/retry |
 | Status bar | bottom, 28 px | zoom, graph validity, compute, storage, backend state |
 
 The graph must retain at least 480x320 CSS pixels at supported desktop minimum.
@@ -41,9 +41,17 @@ landing page. A new project opens a blank graph with the node library ready and 
 compact empty-state command in the canvas. Importing several images places Load
 Image nodes in a non-overlapping grid near the viewport center and selects them.
 
-The inspector is the complete editing surface. Nodes show high-value controls
-only, preserving graph scanability. Double-clicking a node focuses its first
-inspector control; `Escape` returns focus to the node.
+The canvas is the complete ordinary editing surface. Nodes contain their common
+widgets and result previews; a user can build, configure, run, inspect, and fix a
+principal workflow without opening the inspector. The inspector mirrors the same
+schema at larger scale and adds advanced/detail views. Double-clicking a node
+focuses its first node-local control; an explicit **Open in inspector** command
+focuses the mirrored field when more room or detail is needed.
+
+The top app bar contains **Run workflow**, **Interrupt**, and queue status. Run
+uses `Ctrl+Enter`; selected output nodes expose **Run branch** in the nearby node
+toolbox and context menu. The queue/history panel is supporting workspace chrome,
+not the place where node parameters are authored.
 
 ## 4. Graph Interaction Model
 
@@ -76,6 +84,10 @@ graph does not add hundreds of tab stops.
 | `Home` / `End` | Focus first/last node in topological then ID order |
 | `Escape` | Cancel gesture/dialog, then clear selection |
 | `Shift+F10` | Open context menu |
+| `Ctrl+Enter` | Run workflow / append to queue |
+| `Ctrl+Shift+Enter` | Run workflow next/front of queue where enabled |
+| `Ctrl+Alt+Enter` | Interrupt active run |
+| `Alt+C` | Collapse/expand selected nodes |
 
 The Connect dialog selects output port, compatible target node, and input port
 using ordinary list/combobox controls. It is the non-drag equivalent required by
@@ -109,21 +121,32 @@ path. Default conflict-free alternates are `Ctrl+Shift+B`, `Ctrl+Shift+M`, and
 ```text
 +----------------------------------+
 | type icon  Node title       state|
-| optional thumbnail / summary     |
 | input labels              outputs|
-| compact high-value controls      |
-| status / warning / progress      |
+| common parameter widgets         |
+| optional live result / preview   |
+| status / warning / run progress  |
 +----------------------------------+
 ```
 
+Node bodies are interactive work surfaces, not summaries. Compact widget rows use
+the same shared controls and validation as the inspector. Inputs, sliders, selects,
+preview pan/zoom, and buttons carry the no-drag/no-pan contract. Pointer events on
+widgets never begin node move, canvas pan, or edge creation.
+
 ### Stable dimensions
 
-- Default node width: 240 px; minimum 180 px; maximum 560 px.
+- Default simple-node width: 240 px; interactive/preview nodes may default to
+  280-360 px; minimum 180 px; maximum 640 px.
 - Header: 32 px minimum; port row: 28 px minimum.
 - Resize handles have at least a 24 px hit target, even if the visible glyph is
   smaller. Resizing cannot hide required controls or truncate a port label.
 - At distant zoom, internal controls collapse to title/type/state while ports and
   selection remain legible. Layout does not reflow during hover or progress.
+- Node-local previews use an authored or type-default aspect ratio and explicit
+  min-height. Empty/loading/stale/error/cached/result states occupy identical
+  bounds. Image arrival cannot move neighboring nodes or handles.
+- Collapse hides widgets and preview but retains title, state, ports, dirty/result
+  indicator, and authored values. Collapse is authored UI state and round-trips.
 
 ### State presentation
 
@@ -135,6 +158,11 @@ path. Default conflict-free alternates are `Ctrl+Shift+B`, `Ctrl+Shift+M`, and
 | Bypassed | diagonal route marker, “Bypassed” text, dimmed processing body |
 | Muted | output-port stop marker, “Muted” text, downstream invalidity if required |
 | Computing | determinate progress when measurable, otherwise restrained indicator |
+| Dirty | text/icon indicates authored changes are not represented by current completed run |
+| Queued | queue position or queued text; no animated edge |
+| Cached | “Cached”/“Reused” text and result remains visible |
+| Succeeded | completed state tied to captured revision; result is current or explicitly stale |
+| Canceled | canceled text; prior valid result remains where available |
 | Stale | previous preview remains with visible “Updating” label |
 | Warning | warning icon, count, concise summary; output may remain valid |
 | Error | error icon/text, affected port, actionable inspector details |
@@ -152,11 +180,44 @@ in forced colors and monochrome screenshots.
 - Edges inherit source type styling but selected/focused/error overlays are
   independent. Animated edges are not used for ordinary compute status.
 
-## 6. Inspector Contract
+### Node selection toolbox and context menu
+
+The selected-node toolbox appears adjacent to the selection and includes only
+high-frequency commands: Run branch for output nodes, bypass, mute, lock,
+duplicate, and delete. Context menu contains the complete equivalents plus rename,
+collapse/expand, bring to front, and inspector/details. Keyboard focus can enter
+and leave the toolbox without losing node selection.
+
+## 6. Node Widget and Inspector Contract
+
+### Single schema
+
+Every editable field is declared once with key, type, label, unit, bounds,
+default/reset, compact placement, inspector placement, validation, direct-entry
+behavior, and serialization. Node and inspector renderers consume that schema.
+Parity tests fail when either surface is missing a field, writes a different key,
+uses a different default, or produces different undo/preview behavior.
+
+### Node-local ordinary controls
+
+- **Load Image:** source/replace, output Color/Mask, mask source, invert, compact
+  source metadata, and thumbnail.
+- **Resize:** width/height, px/percent, aspect lock, preset, resolved method, reset.
+- **Color Correction:** compact hue, saturation, temperature, green-magenta, tint,
+  tint mix, direct numeric values, reset.
+- **Brightness:** exposure, highlights, shadows, whites, blacks, reset.
+- **Preview:** live node-local bitmap/mask, fit/100%, interpretation, dimensions,
+  stale/running/cached/error state and Run branch command.
+- Future node types follow the inventory in this section and amendment document;
+  ordinary controls cannot be inspector-only.
+
+### Inspector role
 
 Inspector groups controls by Input, Processing, Appearance, Output, and Advanced.
-Groups are unframed sections, not cards. High-frequency controls start expanded;
-Advanced starts collapsed but retains state per node type.
+Groups are unframed sections, not cards. It mirrors node widgets and supplies
+advanced options, metadata, detailed diagnostics, documentation, larger preview,
+and multi-selection editing. Closing the inspector cannot make a principal node
+workflow inoperable.
 
 Every control has visible label, unit, current value, valid range, reset, and
 inline validation. Slider plus numeric field is one logical setting. Slider arrow
@@ -167,7 +228,7 @@ Changes show draft preview continuously when affordable, but undo history gets
 one command per completed gesture/edit session. `Escape` during a slider drag or
 uncommitted text edit restores the before value.
 
-### Node-specific inspector controls
+### Shared node/inspector control inventories
 
 - **Load Image:** asset summary and replace/relink; output Color Image/Mask;
   mask source, invert, and clamp. P1 Color Profile offers Auto, Embedded, Force
@@ -190,8 +251,9 @@ parameter schemas; it does not create private slider, color, or validation UI.
 
 ## 7. Preview Surface
 
-- Preview is never nested in a decorative card. It fills its region against a
-  checkerboard or user-selected background.
+- Preview output is rendered directly inside Preview and result-producing nodes.
+  The inspector can mirror/enlarge the same handle, but cannot be the only result
+  surface. Preview is never nested in a decorative card.
 - Toolbar contains Fit, 100%, zoom, pan, background, mask view, compare, and
   export commands as icons with tooltips.
 - Metadata strip shows logical dimensions, preview scale, interpretation, color
@@ -201,6 +263,26 @@ parameter schemas; it does not create private slider, color, or validation UI.
 - Fullscreen preview returns to the same node and focus on close.
 - Error, empty, stale, and OOM states occupy stable dimensions and never resize
   surrounding controls.
+
+## 7A. Workflow Run and Queue UX
+
+- **Run workflow** is a primary app-bar command with text/icon, accessible name,
+  disabled/invalid explanation, and `Ctrl+Enter` shortcut.
+- **Run branch** appears in the selected output node toolbox/context menu. It names
+  the output and does not imply that disconnected output branches were run.
+- **Interrupt** is available only while queued/running work exists and never uses
+  a destructive confirmation for ordinary cancellation.
+- Queue/history panel lists active first, then recent newest-first. Each row shows
+  target, captured revision, state, elapsed time, cache summary, progress, and
+  diagnostics. Failed/canceled rows retain retry and inspect actions.
+- Running nodes show local progress and the active run ID in accessible details.
+  Cached nodes report cached rather than flashing through running.
+- Editing while a run is active is allowed. Existing output remains visible; the
+  completed older run becomes explicitly stale and never silently replaces a
+  newer current result.
+- Queue badges and node states use icon/shape/text as well as color. Live regions
+  announce queued, started, completed, failed, canceled, and takeover states
+  without moving focus.
 
 ## 8. HSL Color Picker
 
@@ -324,10 +406,12 @@ instant state changes. Nothing flashes more than three times per second.
 | Commands | icon button, text button, split button, toolbar, command palette, menu |
 | Inputs | text, number, slider+number, checkbox, switch, segmented control, select, combobox, color field |
 | Graph | node shell, typed port, edge, resize handles, minimap, graph controls, selection marquee |
+| Node widgets | schema renderer, compact field row, collapse control, selection toolbox, result viewport |
 | Status | inline message, progress, badge, status bar item, live announcer, toast |
 | Overlays | tooltip, popover, menu, dialog, drawer |
 | Data/media | image preview, mask preview, checkerboard, swatch, comparison, pixel readout |
 | Project | project item, import report, asset relinker, recovery item, storage meter |
+| Execution | run button, interrupt button, queue badge, run row, node progress, run diagnostics |
 
 Every component has normal, hover, focus-visible, pressed/selected, disabled,
 error, loading where applicable, high-contrast, light, and dark evidence. A
@@ -347,6 +431,10 @@ Manual and automated checks must prove:
    reduced motion meet WCAG 2.2 AA.
 7. A graph list/outline alternative exposes nodes in topological order and edges
    as textual relationships for inspection and connection commands.
+8. Principal import/configure/run/inspect/fix flow completes without opening the
+  inspector; node-local widgets expose visible labels and validation.
+9. Node widgets do not trigger drag/pan, and node-local preview controls have
+  keyboard equivalents.
 
 ## 13. UX Definition of Done
 

@@ -56,6 +56,16 @@ intent.
 
 No actionable seed statement is intentionally unmapped.
 
+### Post-seed user directives
+
+| Source ID | Directive | Requirements/contracts | Milestone | Verification |
+| --- | --- | --- | --- | --- |
+| USR-001 | Controls and previews live directly in nodes; inspector remains optional/secondary; node management and workflow running follow familiar ComfyUI behavior | NOD-002/007/008/009, EXE-001..008, UX node-first amendment, Architecture explicit run queue | R1 then M5-M10 | E2E-013..017, 25/100/300-node performance, node/inspector parity |
+
+`USR-001` is captured normatively in
+`10-node-first-workbench-update.md`. It changes derived product behavior without
+editing the immutable seed.
+
 ## 3. Requirement-to-Contract Summary
 
 | Requirement family | Normative contract | Verification family |
@@ -90,6 +100,9 @@ No actionable seed statement is intentionally unmapped.
 | DEC-011 | Blocked visual only | Exact HSL picker visuals wait for approved design source. | SPIKE-008 found no approved source; exact similarity cannot be derived from absent evidence. |
 | DEC-012 | Rejected pending replacement | TIFF remains hidden because no managed-feed candidate proves maintained 8/16-bit RGBA browser encoding. | SPIKE-001 and ADR-005. |
 | DEC-013 | Accepted | Validation loops are mandatory Playwright UX evaluations that open the actual app and prove the intended user task, not functional code test loops. | Prevents unit/build/DOM-only evidence from closing user-experience outcomes. |
+| DEC-014 | Accepted | Common controls and output previews are node-local; inspector is a schema-driven secondary detail/multi-edit surface. | User directive USR-001 and ComfyUI property/output-node familiarity; reopen only if objective large-graph or accessibility gates cannot be met with detail reduction. |
+| DEC-015 | Accepted | Workflow execution is explicit: Run/partial-run creates immutable queue records distinct from authored edits and draft previews. | Prevents implicit background work from masquerading as a completed workflow and enables observable cancel/cache/stale behavior. |
+| DEC-016 | Accepted | ComfyUI is a behavioral reference, not a visual/template dependency. | Preserve TextureFlow domain, design tokens, typed math, and accessibility while adopting familiar node management/execution principles. |
 
 ## 5. Risk Register
 
@@ -113,6 +126,11 @@ No actionable seed statement is intentionally unmapped.
 | RSK-016 | Hidden data remains in transparent pixels or EXIF | Medium / High | canonical transparent black and export re-encode/metadata allowlist |
 | RSK-017 | HSL picker parity claim is invented without source | Current / High | blocked decision and source-based review before claim |
 | RSK-018 | Optional shared memory headers break asset/embed scenarios | Medium / Medium | transferables baseline; COOP/COEP optimization only |
+| RSK-019 | Rich node widgets/previews make large graphs unreadable or slow | High / High | schema compactness tiers, collapse/zoom detail policy, stable dimensions, 25/100/300-node actual-app gates |
+| RSK-020 | Node and inspector controls drift into two implementations | High / High | one widget schema/component source; parity tests for key/default/validation/undo/serialization |
+| RSK-021 | Implicit draft preview is confused with workflow execution/current result | High / High | explicit run IDs and queue records; distinct draft/run/result state; stale revision publication gate |
+| RSK-022 | Interactive widgets drag/pan nodes or make keyboard focus unusable | High / High | no-drag/no-pan ownership, roving graph focus, widget keyboard paths, pointer hit-test and 200% zoom evaluation |
+| RSK-023 | Queue/history grows without bounds or becomes authored workflow state | Medium / Medium | bounded ephemeral history, result handle release, workflow schema exclusion, retention settings |
 
 Risk owners are assigned when implementation roles are staffed. Critical risks
 cannot be accepted without explicit product/engineering review and user-visible
