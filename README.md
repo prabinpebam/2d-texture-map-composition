@@ -60,7 +60,8 @@ on localhost do not automatically appear on the hosted demo.
 
 Prerequisites:
 
-- Node.js 24 and an installed npm executable (no Corepack).
+- Node.js 24.15 or newer in the 24.x line and an installed npm executable
+  (no Corepack).
 - Rust **1.93.1**, selected by [rust-toolchain.toml](rust-toolchain.toml), with
   the `wasm32-unknown-unknown` target.
 - Microsoft Edge for local Playwright browser checks.

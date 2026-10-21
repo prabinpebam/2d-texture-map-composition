@@ -24,7 +24,7 @@ intent. Never edit it.
 Required local tools:
 
 - Windows with current Microsoft Edge.
-- Node.js 24.x and an installed npm executable.
+- Node.js 24.15 or newer in the 24.x line and an installed npm executable.
 - Rust 1.93.x with `wasm32-unknown-unknown` and Clippy.
 - Git and GitHub CLI authenticated as `prabinpebam` for publishing.
 

@@ -7,7 +7,7 @@ For the introduction, live demo, and first workflow, see the
 
 ## Prerequisites
 
-- Node.js 24 or the repository-selected compatible version.
+- Node.js 24.15 or newer in the 24.x line.
 - Rust 1.93.1 with the `wasm32-unknown-unknown` target (see `rust-toolchain.toml`).
 - Direct npm executable. Do not use Corepack in this managed environment.
 - Microsoft Edge for the mandatory local Playwright UX gate.
@@ -19,6 +19,9 @@ https://packagefeedproxy.microsoft.io/npm/
 ```
 
 Do not retry package operations against `registry.npmjs.org`.
+
+ESLint stays on the 9.x line supported by `eslint-plugin-jsx-a11y`. Keep their
+peer dependency ranges compatible so a clean `npm ci` works without overrides.
 
 ## Local Commands
 
