@@ -30,7 +30,7 @@ function responseContext(request: LinearDodgeRequest) {
 
 async function loadWasm(): Promise<KernelExports> {
   wasmBackend ??= WebAssembly.instantiateStreaming(
-    fetch('/wasm/image_kernels.wasm'),
+    fetch(`${import.meta.env.BASE_URL}wasm/image_kernels.wasm`),
   ).then(({ instance }) => instance.exports as KernelExports)
   return wasmBackend
 }

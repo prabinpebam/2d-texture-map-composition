@@ -2,10 +2,13 @@
 
 React and TypeScript application for the 2D texture-map composition workspace.
 The implementation contract is in the repository `documentation/` directory.
+For the introduction, live demo, and first workflow, see the
+[project README](../README.md).
 
 ## Prerequisites
 
 - Node.js 24 or the repository-selected compatible version.
+- Rust 1.93.1 with the `wasm32-unknown-unknown` target (see `rust-toolchain.toml`).
 - Direct npm executable. Do not use Corepack in this managed environment.
 - Microsoft Edge for the mandatory local Playwright UX gate.
 
@@ -38,3 +41,20 @@ the ignored `test-results/` directory.
 Functional tests support implementation correctness. They do not replace the UX
 evaluation, and a milestone is not complete if Playwright cannot open the actual
 app or the user cannot complete the intended task.
+
+## GitHub Pages
+
+```powershell
+npm run build:pages
+npm run test:pages
+```
+
+The Pages build uses `/2d-texture-map-composition/` instead of the local root.
+Its dedicated Playwright configuration starts a production preview on port
+4175, verifies WASM and storage readiness, and exercises image import, error
+recovery, node connection, pixel rendering, and save/reload. Set `PAGES_URL` to
+the published URL (including its trailing slash) to run against the live site
+instead. CI uses Chromium; local checks use Microsoft Edge.
+
+The repository's Pages workflow runs these checks before deploying `dist/`.
+See the [deployment guide](../README.md#deployment) for repository settings.

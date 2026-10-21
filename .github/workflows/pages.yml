@@ -1,0 +1,74 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    env:
+      NPM_CONFIG_REGISTRY: https://packagefeedproxy.microsoft.io/npm/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+          registry-url: https://packagefeedproxy.microsoft.io/npm/
+      - name: Verify package source and install dependencies
+        run: |
+          test "$(npm config get registry)" = "https://packagefeedproxy.microsoft.io/npm/"
+          npm ci
+      - name: Install pinned Rust toolchain and WASM target
+        run: rustup show
+      - name: Check formatting, lint, unit tests, and WASM
+        run: |
+          npm run format:check
+          npm run lint
+          npm test
+          npm run test:wasm
+      - name: Build for the repository Pages path
+        run: npm run build:pages
+      - name: Install test browser
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+      - name: Exercise production image workflow
+        run: npm run test:pages
+      - name: Retain browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-browser-evidence
+          path: app/test-results/pages/
+          if-no-files-found: ignore
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -9,8 +9,9 @@ work. Read this document before changing code.
 
 Repository after handoff:
 
-- GitHub: `https://github.com/prpebam_microsoft/2d-texture-map-composition`
-- Visibility: private
+- GitHub: `https://github.com/prabinpebam/2d-texture-map-composition`
+- Visibility: public
+- Live demo: `https://prabinpebam.github.io/2d-texture-map-composition/`
 - Primary branch: `master`
 - Local project root: `2d-texture-map-composition`
 - Web application root: `app/`
@@ -25,7 +26,7 @@ Required local tools:
 - Windows with current Microsoft Edge.
 - Node.js 24.x and an installed npm executable.
 - Rust 1.93.x with `wasm32-unknown-unknown` and Clippy.
-- Git and GitHub CLI authenticated as `prpebam_microsoft`.
+- Git and GitHub CLI authenticated as `prabinpebam` for publishing.
 
 Package registry rules are mandatory:
 
@@ -37,7 +38,7 @@ Package registry rules are mandatory:
 Bootstrap and verify:
 
 ```powershell
-git clone https://github.com/prpebam_microsoft/2d-texture-map-composition.git
+git clone https://github.com/prabinpebam/2d-texture-map-composition.git
 Set-Location 2d-texture-map-composition
 npm --prefix app ci
 npm --prefix app run check:fast
